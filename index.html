@@ -752,7 +752,7 @@
     <div><div class="section-title">Trades</div><div class="section-sub" id="tradesSub">Loading...</div></div>
     <div class="section-action" onclick="showAddTrade()">+ New</div>
   </div>
-  <div class="filter-row">
+  <div class="filter-row" id="typeFilterRow">
     <div class="filter-pill active" data-filter="all">All</div>
     <div class="filter-pill" data-filter="open">Open</div>
     <div class="filter-pill" data-filter="closed">Closed</div>
@@ -761,6 +761,13 @@
     <div class="filter-pill" data-filter="CC">CC</div>
     <div class="filter-pill" data-filter="PMCC">PMCC</div>
     <div class="filter-pill" data-filter="IC">IC</div>
+  </div>
+  <div class="filter-row" id="monthFilterRow">
+    <div class="filter-pill active" data-month="all">Tum Aylar</div>
+    <div class="filter-pill" data-month="Aralik">Aralik</div>
+    <div class="filter-pill" data-month="Ocak">Ocak</div>
+    <div class="filter-pill" data-month="Subat">Subat</div>
+    <div class="filter-pill" data-month="Mart">Mart</div>
   </div>
   <div class="trade-list" id="tradeList"></div>
 </div>
@@ -928,7 +935,7 @@
         </div>
         <div>
           <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px;">Kur (₺)</div>
-          <input type="number" id="kurDeger" placeholder="örn: 38.42" step="0.01" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:11px 12px;color:var(--text);font-size:14px;outline:none;width:100%;">
+          <input type="number" id="kurDeger" placeholder="örn: 38.4271" step="0.0001" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:11px 12px;color:var(--text);font-size:14px;outline:none;width:100%;">
         </div>
         <button onclick="kurEkle()" style="background:var(--info);border:none;border-radius:10px;padding:11px 16px;color:white;font-family:var(--font-head);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">+ Ekle</button>
       </div>
@@ -975,6 +982,16 @@ var kurlarData = JSON.parse(JSON.stringify(KURLAR_SEED));
 try { var _k = localStorage.getItem(KURLAR_LS); if(_k){ var _ks=JSON.parse(_k); Object.keys(_ks).forEach(function(d){ kurlarData[d]=_ks[d]; }); } } catch(e){}
 // Also import from old app's kurlar key
 try { var _ko = localStorage.getItem('kurlar'); if(_ko){ var _kod=JSON.parse(_ko); Object.keys(_kod).forEach(function(d){ if(!kurlarData[d]) kurlarData[d]=_kod[d]; }); } } catch(e){}
+// Migrate all existing kur values to 4 decimal places (truncate, no rounding)
+(function(){
+  var changed = false;
+  Object.keys(kurlarData).forEach(function(d){
+    var v = parseFloat(kurlarData[d]);
+    var v4 = Math.trunc(v * 10000) / 10000;
+    if(kurlarData[d] !== v4){ kurlarData[d] = v4; changed = true; }
+  });
+  if(changed) try { localStorage.setItem(KURLAR_LS, JSON.stringify(kurlarData)); } catch(e){}
+})();
 function saveKurlar(){ try { localStorage.setItem(KURLAR_LS, JSON.stringify(kurlarData)); } catch(e){} }
 // Also save taxData (komisyon per trade)
 var TAX_LS = 'tax_v1';
@@ -1006,21 +1023,29 @@ var SEED = {
 var tradesData, leapsData;
 // Real data is baked into SEED — always use it as base so it shows on every device.
 // User-added trades (id > 400000) from localStorage are merged on top.
-tradesData = JSON.parse(JSON.stringify(SEED));
 try {
   var _d = localStorage.getItem(LS);
   if (_d) {
-    var _saved = JSON.parse(_d);
-    Object.keys(_saved).forEach(function(m) {
+    // localStorage has full data — use it directly (preserves closed/edited states)
+    tradesData = JSON.parse(_d);
+    // Merge any SEED trades that are missing (new months added later)
+    Object.keys(SEED).forEach(function(m) {
       if (!tradesData[m]) tradesData[m] = [];
-      (_saved[m] || []).forEach(function(t) {
-        if (t.id > 400000 && !tradesData[m].find(function(x){return x.id===t.id;})) {
-          tradesData[m].push(t);
+      SEED[m].forEach(function(seedTrade) {
+        if (!tradesData[m].find(function(x){return x.id===seedTrade.id;})) {
+          tradesData[m].push(JSON.parse(JSON.stringify(seedTrade)));
         }
       });
     });
+  } else {
+    // No localStorage yet — load from SEED
+    tradesData = JSON.parse(JSON.stringify(SEED));
+    // Save immediately so future loads use localStorage
+    try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e2){}
   }
-} catch(e) {}
+} catch(e) {
+  tradesData = JSON.parse(JSON.stringify(SEED));
+}
 try { var _l = localStorage.getItem(LEAPS_LS); leapsData = _l ? JSON.parse(_l) : []; } catch(e) { leapsData = []; }
 
 function saveData() { try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e){} }
@@ -1232,12 +1257,18 @@ function renderDashboard(){
 
 // ═══════════════════ TRADES ═══════════════════
 var currentFilter='all';
-function renderTradeList(filter){
-  currentFilter=filter||'all';
+var currentMonthFilter='all';
+function renderTradeList(filter, month){
+  if(filter !== undefined) currentFilter = filter || 'all';
+  if(month !== undefined) currentMonthFilter = month || 'all';
   var all=getAllTrades(); var f=all;
-  if(filter==='open')f=all.filter(function(t){return!t.closed;});
-  else if(filter==='closed')f=all.filter(function(t){return!!t.closed;});
-  else if(filter&&filter!=='all')f=all.filter(function(t){return t.type===filter;});
+  if(currentFilter==='open')f=all.filter(function(t){return!t.closed;});
+  else if(currentFilter==='closed')f=all.filter(function(t){return!!t.closed;});
+  else if(currentFilter&&currentFilter!=='all')f=all.filter(function(t){return t.type===currentFilter;});
+  // Apply month filter on top
+  if(currentMonthFilter && currentMonthFilter!=='all'){
+    f=f.filter(function(t){return t.month===currentMonthFilter;});
+  }
   f.sort(function(a,b){if(!a.closed&&b.closed)return-1;if(a.closed&&!b.closed)return 1;return new Date(b.opened)-new Date(a.opened);});
   var oc=all.filter(function(t){return!t.closed;}).length; var cc=all.filter(function(t){return!!t.closed;}).length;
   var sub=document.getElementById('tradesSub'); if(sub)sub.textContent=all.length+' total · '+oc+' open · '+cc+' closed';
@@ -1280,8 +1311,22 @@ function renderTradeList(filter){
 }
 
 document.addEventListener('click',function(e){
+  // Type filter (All, Open, Closed, CSP, etc.)
   var p=e.target.closest('[data-filter]');
-  if(p){document.querySelectorAll('.filter-pill').forEach(function(x){x.classList.remove('active');});p.classList.add('active');renderTradeList(p.dataset.filter);}
+  if(p){
+    document.querySelectorAll('#typeFilterRow .filter-pill').forEach(function(x){x.classList.remove('active');});
+    p.classList.add('active');
+    renderTradeList(p.dataset.filter, undefined);
+    return;
+  }
+  // Month filter
+  var m=e.target.closest('[data-month]');
+  if(m){
+    document.querySelectorAll('#monthFilterRow .filter-pill').forEach(function(x){x.classList.remove('active');});
+    m.classList.add('active');
+    renderTradeList(undefined, m.dataset.month);
+    return;
+  }
 });
 document.querySelectorAll('.period-btn').forEach(function(b){b.addEventListener('click',function(){this.closest('.period-row').querySelectorAll('.period-btn').forEach(function(x){x.classList.remove('active');});this.classList.add('active');});});
 
@@ -1534,8 +1579,8 @@ function renderVergi(){
         '<div><span style="font-family:var(--font-head);font-weight:600;color:'+tc2.color+'">'+t.ticker+'</span><div style="font-size:10px;color:var(--text-3);margin-top:1px;">'+t.closed+'</div></div>'+
         '<div style="font-size:10px;padding:2px 5px;border-radius:4px;background:rgba(255,255,255,.06);color:var(--text-2);text-align:center;">'+t.type+'</div>'+
         '<div style="font-family:var(--font-mono);color:'+(t.pnl>=0?'var(--profit)':'var(--loss)')+'">'+fmt$(t.pnl)+'</div>'+
-        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.acilis_kur>0?res.acilis_kur.toFixed(2):'<span style="color:var(--warn)">—</span>')+'</div>'+
-        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.kapanis_kur>0?res.kapanis_kur.toFixed(2):'<span style="color:var(--warn)">—</span>')+'</div>'+
+        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.acilis_kur>0?res.acilis_kur.toFixed(4):'<span style="color:var(--warn)">—</span>')+'</div>'+
+        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.kapanis_kur>0?res.kapanis_kur.toFixed(4):'<span style="color:var(--warn)">—</span>')+'</div>'+
         '<div style="font-family:var(--font-mono);font-weight:600;color:'+matrahColor+'">'+matrahTxt+'</div>'+
       '</div>';
     }).join('') || '<div style="text-align:center;padding:20px;color:var(--text-3);">Kapatılan trade yok</div>';
@@ -1566,7 +1611,9 @@ function kurEkle(){
   var deger = parseFloat(document.getElementById('kurDeger').value);
   if(!tarih){ alert('Tarih seçin'); return; }
   if(!deger || deger <= 0){ alert('Geçerli bir kur girin'); return; }
-  kurlarData[tarih] = deger;
+  // Store exact value truncated to 4 decimal places (no rounding)
+  var factor = 10000;
+  kurlarData[tarih] = Math.trunc(deger * factor) / factor;
   saveKurlar();
   document.getElementById('kurDeger').value = '';
   renderVergi();
@@ -1771,6 +1818,7 @@ function openTradeDetail(tradeId, month){
       }
       saveData();ov.remove();
       renderDashboard();renderTradeList(currentFilter);
+      if(typeof renderVergi==='function' && document.getElementById('screen-vergi') && document.getElementById('screen-vergi').classList.contains('active')) renderVergi();
     };
     sec.appendChild(closeBtn);
     sh.appendChild(sec);
