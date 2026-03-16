@@ -678,9 +678,16 @@
 
 <!-- ═══════════════════════ DASHBOARD ═══════════════════════ -->
 <div class="screen active" id="screen-dashboard">
+  <div class="filter-row" id="dashMonthFilter" style="padding:12px 20px 4px;">
+    <div class="filter-pill active" data-dash-month="all" onclick="setDashMonth(this,'all')">Tüm Zamanlar</div>
+    <div class="filter-pill" data-dash-month="Aralik" onclick="setDashMonth(this,'Aralik')">Aralık</div>
+    <div class="filter-pill" data-dash-month="Ocak" onclick="setDashMonth(this,'Ocak')">Ocak</div>
+    <div class="filter-pill" data-dash-month="Subat" onclick="setDashMonth(this,'Subat')">Şubat</div>
+    <div class="filter-pill" data-dash-month="Mart" onclick="setDashMonth(this,'Mart')">Mart</div>
+  </div>
   <div class="hero-strip">
     <div class="hero-card" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(34,197,94,0.08),rgba(59,130,246,0.06));border-color:rgba(34,197,94,0.2);">
-      <div class="hero-label">Total P&L — YTD</div>
+      <div class="hero-label" id="heroPnlLabel">Total P&L — YTD</div>
       <div class="hero-val" id="heroPnl">—</div>
       <div class="hero-change" id="heroPnlChange"></div>
     </div>
@@ -756,6 +763,13 @@
 <div class="screen" id="screen-statistics">
   <div class="section-head">
     <div><div class="section-title">Statistics</div><div class="section-sub" id="statsSub">Loading...</div></div>
+  </div>
+  <div class="filter-row" style="padding:4px 20px 8px;">
+    <div class="filter-pill active" data-stat-month="all" onclick="setStatMonth(this,'all')">Tüm Zamanlar</div>
+    <div class="filter-pill" data-stat-month="Aralik" onclick="setStatMonth(this,'Aralik')">Aralık</div>
+    <div class="filter-pill" data-stat-month="Ocak" onclick="setStatMonth(this,'Ocak')">Ocak</div>
+    <div class="filter-pill" data-stat-month="Subat" onclick="setStatMonth(this,'Subat')">Şubat</div>
+    <div class="filter-pill" data-stat-month="Mart" onclick="setStatMonth(this,'Mart')">Mart</div>
   </div>
   <div class="donut-section">
     <div style="font-family:var(--font-head);font-size:14px;font-weight:600;margin-bottom:12px;">Win/Loss Breakdown</div>
@@ -1115,13 +1129,60 @@ function switchChartTab(el,type){
 }
 
 // ═══════════════════ DASHBOARD ═══════════════════
+var currentDashMonth = 'all';
+var currentStatMonth = 'all';
+
+function setDashMonth(el, month){
+  document.querySelectorAll('[data-dash-month]').forEach(function(x){x.classList.remove('active');});
+  el.classList.add('active');
+  currentDashMonth = month;
+  renderDashboard();
+}
+
+function setStatMonth(el, month){
+  document.querySelectorAll('[data-stat-month]').forEach(function(x){x.classList.remove('active');});
+  el.classList.add('active');
+  currentStatMonth = month;
+  renderStats();
+}
+
+function getFilteredTrades(month){
+  var all = getAllTrades();
+  if(!month || month === 'all') return all;
+  return all.filter(function(t){ return t.month === month; });
+}
+
+function getFilteredClosedTrades(month){
+  return getFilteredTrades(month).filter(function(t){ return t.closed && t.pnl != null; });
+}
+
+function calcStatsFor(month){
+  var closed = getFilteredClosedTrades(month);
+  var totalPnl = closed.reduce(function(s,t){ return s+t.pnl; }, 0);
+  var winners  = closed.filter(function(t){ return t.pnl > 0; });
+  var losers   = closed.filter(function(t){ return t.pnl <= 0; });
+  var winRate  = closed.length ? winners.length/closed.length : 0;
+  var avgWin   = winners.length ? winners.reduce(function(s,t){return s+t.pnl;},0)/winners.length : 0;
+  var avgLoss  = losers.length  ? Math.abs(losers.reduce(function(s,t){return s+t.pnl;},0)/losers.length) : 0;
+  var payoff   = avgLoss > 0 ? avgWin/avgLoss : 0;
+  var gP = winners.reduce(function(s,t){return s+t.pnl;},0);
+  var gL = Math.abs(losers.reduce(function(s,t){return s+t.pnl;},0));
+  var pf = gL > 0 ? gP/gL : 0;
+  var ev = closed.length ? totalPnl/closed.length : 0;
+  return { totalPnl, winners:winners.length, losers:losers.length, total:closed.length, winRate, avgWin, avgLoss, payoff, profitFactor:pf, ev };
+}
+
 function renderDashboard(){
-  var stats=calcStats(); var open=getOpenTrades();
+  var month = currentDashMonth;
+  var stats = calcStatsFor(month);
+  var open  = getOpenTrades();
   var coll=open.reduce(function(s,t){return s+(t.teminat||0);},0);
   var cp=PORT_SIZE>0?coll/PORT_SIZE:0;
-  var monthly=getMonthlyStats(); var ytd=monthly.reduce(function(s,x){return s+x.pnl;},0);
+  var monthly = month==='all' ? getMonthlyStats() : getMonthlyStats().filter(function(x){return x.month===month;});
+  var ytd=monthly.reduce(function(s,x){return s+x.pnl;},0);
 
-  var el; 
+  var el;
+  el=document.getElementById('heroPnlLabel'); if(el)el.textContent=month==='all'?'Total P&L — YTD':'P&L — '+month;
   el=document.getElementById('heroPnl'); if(el){el.textContent=fmt$(stats.totalPnl);el.style.color=stats.totalPnl>=0?'var(--profit)':'var(--loss)';}
   el=document.getElementById('heroPnlChange'); if(el)el.innerHTML='<span class="hero-badge '+(stats.totalPnl>=0?'profit':'loss')+'">'+fmtP(stats.totalPnl/PORT_SIZE)+'</span><span style="color:var(--text-3);font-size:11px;"> on $'+Math.round(PORT_SIZE/1000)+'K portfolio</span>';
   el=document.getElementById('heroWR'); if(el)el.textContent=Math.round(stats.winRate*100)+'%';
@@ -1145,12 +1206,12 @@ function renderDashboard(){
     {v:stats.payoff.toFixed(2),l:'Payoff R',c:'var(--info)'},
     {v:stats.profitFactor.toFixed(2),l:'P Factor',c:'var(--warn)'},
     {v:fmt$(stats.ev),l:'EV/Trade',c:'var(--text)'},
-    {v:open.length,l:'Open',c:'var(--info)'}
+    {v:stats.total,l:month==='all'?'Trades':'Trades ('+month+')',c:'var(--info)'}
   ].map(function(x){return'<div class="stat-cell"><div class="stat-cell-val" style="color:'+x.c+'">'+x.v+'</div><div class="stat-cell-lbl">'+x.l+'</div></div>';}).join('');
 
   el=document.getElementById('recentTrades');
   if(el){
-    var recent=getClosedTrades().sort(function(a,b){return new Date(b.closed)-new Date(a.closed);}).slice(0,5);
+    var recent=getFilteredClosedTrades(month).sort(function(a,b){return new Date(b.closed)-new Date(a.closed);}).slice(0,5);
     el.innerHTML=recent.map(function(t){
       var tc=tcol(t.ticker.split(' ')[0]);var ip=t.pnl>=0;
       return'<div class="activity-item"><div class="activity-icon" style="background:'+tc.bg+';color:'+tc.color+'">'+t.ticker.split(' ')[0].slice(0,4)+'</div>'+
@@ -1216,12 +1277,18 @@ document.querySelectorAll('.period-btn').forEach(function(b){b.addEventListener(
 
 // ═══════════════════ STATISTICS ═══════════════════
 function renderStats(){
-  var stats=calcStats(); var closed=getClosedTrades(); var open=getOpenTrades();
-  var sub=document.getElementById('statsSub'); if(sub)sub.textContent=closed.length+' closed · '+open.length+' open';
+  var month = currentStatMonth;
+  var stats=calcStatsFor(month);
+  var closed=getFilteredClosedTrades(month);
+  var open=getOpenTrades();
+  var label = month==='all' ? 'Tüm zamanlar' : month;
+  var sub=document.getElementById('statsSub'); if(sub)sub.textContent=label+' · '+closed.length+' kapatılan · '+open.length+' açık';
   var dctx=document.getElementById('donutChart');
   if(dctx){if(donutChartInst)donutChartInst.destroy();donutChartInst=new Chart(dctx.getContext('2d'),{type:'doughnut',data:{datasets:[{data:[stats.winners,stats.losers],backgroundColor:['rgba(34,197,94,.8)','rgba(239,68,68,.8)'],borderColor:['#22C55E','#EF4444'],borderWidth:1.5,hoverOffset:4}]},options:{responsive:false,cutout:'70%',plugins:{legend:{display:false}}}});}
   var dl=document.getElementById('donutLegend');
-  if(dl)dl.innerHTML='<div class="legend-item"><div class="legend-dot" style="background:#22C55E"></div><span class="legend-txt">Winners</span><span class="legend-pct" style="color:var(--profit)">'+Math.round(stats.winRate*100)+'% · '+stats.winners+'</span></div><div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div><span class="legend-txt">Losers</span><span class="legend-pct" style="color:var(--loss)">'+Math.round((1-stats.winRate)*100)+'% · '+stats.losers+'</span></div>';
+  if(dl)dl.innerHTML='<div class="legend-item"><div class="legend-dot" style="background:#22C55E"></div><span class="legend-txt">Winners</span><span class="legend-pct" style="color:var(--profit)">'+Math.round(stats.winRate*100)+'% · '+stats.winners+'</span></div>'+
+    '<div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div><span class="legend-txt">Losers</span><span class="legend-pct" style="color:var(--loss)">'+Math.round((1-stats.winRate)*100)+'% · '+stats.losers+'</span></div>'+
+    (month!=='all'?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3);">'+month+' ayı · '+stats.total+' trade</div>':'');
   var sg=document.getElementById('statsGrid');
   if(sg)sg.innerHTML=[
     {l:'Win Rate',v:Math.round(stats.winRate*100)+'%',sub:stats.winners+' of '+stats.total,bar:stats.winRate,bc:'var(--info)',c:'var(--info)'},
@@ -1233,7 +1300,7 @@ function renderStats(){
     {l:'Total P&L',v:fmt$(stats.totalPnl),sub:fmtP(stats.totalPnl/PORT_SIZE)+' return',c:stats.totalPnl>=0?'var(--profit)':'var(--loss)',full:true}
   ].map(function(x){return'<div class="stats-big-card'+(x.full?' full':'')+'"><div class="stat-big-lbl">'+x.l+'</div><div class="stat-big-val" style="color:'+x.c+'">'+x.v+'</div><div class="stat-big-sub">'+x.sub+'</div>'+(x.bar!=null?'<div class="stat-big-bar"><div class="stat-big-bar-fill" style="width:'+Math.round(x.bar*100)+'%;background:'+x.bc+'"></div></div>':'')+'</div>';}).join('');
   var st=document.getElementById('stratTableInner');
-  if(st){var rows=['CSP','CC','PMCC','PCS','IC'].map(function(type){var t=closed.filter(function(x){return x.type===type;});if(!t.length)return null;var pnl=t.reduce(function(s,x){return s+x.pnl;},0);var wr=t.length?t.filter(function(x){return x.pnl>0;}).length/t.length:0;return'<div class="perf-row" style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;"><div style="display:flex;align-items:center;"><span class="strategy-tag '+tagCls(type)+'" style="margin:0;">'+type+'</span></div><div class="perf-row-val">'+t.length+'</div><div class="perf-row-val" style="color:'+(wr>=.7?'var(--profit)':wr>=.5?'var(--warn)':'var(--loss)')+'">'+Math.round(wr*100)+'%</div><div class="perf-row-val" style="color:'+(pnl>=0?'var(--profit)':'var(--loss)')+'">'+fmt$(pnl)+'</div></div>';}).filter(Boolean).join('');st.innerHTML='<div class="perf-row" style="background:rgba(255,255,255,.02);display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;"><div>Strategy</div><div>Trades</div><div>WR%</div><div>P&L</div></div>'+rows;}
+  if(st){var rows=['CSP','CC','PMCC','PCS','IC','Long Call','LEAPS','HEDGE','COLLAR PUT','COLLAR CALL'].map(function(type){var t=closed.filter(function(x){return x.type===type;});if(!t.length)return null;var pnl=t.reduce(function(s,x){return s+x.pnl;},0);var wr=t.length?t.filter(function(x){return x.pnl>0;}).length/t.length:0;return'<div class="perf-row" style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;"><div style="display:flex;align-items:center;"><span class="strategy-tag '+tagCls(type)+'" style="margin:0;">'+type+'</span></div><div class="perf-row-val">'+t.length+'</div><div class="perf-row-val" style="color:'+(wr>=.7?'var(--profit)':wr>=.5?'var(--warn)':'var(--loss)')+'">'+Math.round(wr*100)+'%</div><div class="perf-row-val" style="color:'+(pnl>=0?'var(--profit)':'var(--loss)')+'">'+fmt$(pnl)+'</div></div>';}).filter(Boolean).join('');st.innerHTML='<div class="perf-row" style="background:rgba(255,255,255,.02);display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;"><div>Strategy</div><div>Trades</div><div>WR%</div><div>P&L</div></div>'+rows;}
 }
 
 // ═══════════════════ RISK ═══════════════════
