@@ -968,10 +968,14 @@
   <div style="margin:0 20px 12px;">
     <div style="font-family:var(--font-head);font-size:14px;font-weight:600;margin-bottom:10px;">📋 Trade Bazlı Vergi Tablosu</div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
-      <div style="display:grid;grid-template-columns:1fr 60px 70px 80px 80px 80px;padding:10px 12px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.08);font-size:9px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;gap:4px;">
-        <div>Trade</div><div>Tür</div><div>USD P&L</div><div>Açılış Kur</div><div>Kapanış Kur</div><div>TRY Matrah</div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <div style="min-width:560px;">
+          <div style="display:grid;grid-template-columns:140px 52px 80px 80px 80px 90px;padding:10px 12px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.08);font-size:9px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;gap:4px;">
+            <div>Trade</div><div>Tür</div><div>USD P&L</div><div>Açılış Kur</div><div>Kapanış Kur</div><div>TRY Matrah</div>
+          </div>
+          <div id="vergiTablosu"></div>
+        </div>
       </div>
-      <div id="vergiTablosu"></div>
     </div>
   </div>
 
@@ -1618,7 +1622,7 @@ function renderVergi(){
         var matrahVal=!res.hasKur?'-':Math.round(res.matrah_try).toLocaleString()+' TRY';
 
         var row=document.createElement('div');
-        row.style.cssText='display:grid;grid-template-columns:1fr 55px 70px 75px 75px 80px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:12px;gap:4px;align-items:center';
+        row.style.cssText='display:grid;grid-template-columns:140px 52px 80px 80px 80px 90px;min-width:560px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:12px;gap:6px;align-items:center';
 
         // Ticker + date
         var c1=document.createElement('div');
@@ -1680,8 +1684,6 @@ function renderKurListesi(){
         '<div style="font-family:var(--font-mono);font-size:14px;font-weight:600;color:var(--warn);">'+parseFloat(kurlarData[d]).toFixed(2)+' ₺</div>'+
         '<button onclick="kurSil(this.dataset.d)" data-d="'+d+'" style="background:var(--loss-dim);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 8px;color:var(--loss);font-size:11px;cursor:pointer;">Sil</button>'+
       '</div>'+
-    '</div>'+
-      (t.note ? '<div class="tc-note">📝 '+t.note+'</div>' : '')+
     '</div>';
   }).join('');
 }
@@ -1753,7 +1755,7 @@ function refreshVergiCalc(){
       var mColor=!res3.hasKur?'var(--text-3)':res3.matrah_try>=0?'var(--profit)':'var(--loss)';
       var mVal=!res3.hasKur?'-':Math.round(res3.matrah_try).toLocaleString()+' TRY';
       var rowEl=document.createElement('div');
-      rowEl.style.cssText='display:grid;grid-template-columns:1fr 55px 70px 75px 75px 80px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:12px;gap:4px;align-items:center';
+      rowEl.style.cssText='display:grid;grid-template-columns:140px 52px 80px 80px 80px 90px;min-width:560px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:12px;gap:6px;align-items:center';
       var c1=document.createElement('div');
       var sp=document.createElement('span');sp.style.cssText='font-family:var(--font-head);font-weight:600;color:'+tc2.color;sp.textContent=tr2.ticker;
       var dt=document.createElement('div');dt.style.cssText='font-size:10px;color:var(--text-3);margin-top:1px';dt.textContent=tr2.closed;
