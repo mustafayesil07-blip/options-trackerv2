@@ -1404,6 +1404,23 @@ function renderRisk(){
   open.forEach(function(t){var d=getDTE(t.expiry);if(d!==null&&d<=7)alerts.push({type:'danger',icon:'⏱',title:'DTE Alert — Near Expiry',desc:t.ticker+' has '+d+' days left. Gamma risk accelerates below 7 DTE.',meta:t.ticker+' · '+d+' DTE'});});
   open.forEach(function(t){if(t.ivr&&t.ivr>65)alerts.push({type:'warn',icon:'📈',title:'High IVR',desc:t.ticker+' IVR: '+t.ivr+'. Verify setup.',meta:t.ticker});});
   open.forEach(function(t){if(t.teminat>PORT_SIZE*0.1)alerts.push({type:'warn',icon:'💰',title:'Large Position Size',desc:t.ticker+' uses '+(t.teminat/PORT_SIZE*100).toFixed(1)+'% of portfolio — over 10% limit.',meta:fmtA$(t.teminat)});});
+  // LEAPS expiry alerts
+  (leapsData||[]).forEach(function(l){
+    if(!l.expiry || l.closed) return;
+    var d=getDTE(l.expiry);
+    if(d===null) return;
+    if(d<=60){
+      alerts.push({type:'danger',icon:'⏳',
+        title:'LEAPS Expiry Critical — '+l.ticker,
+        desc:l.ticker+' '+l.direction+' $'+l.strike+' vadesi '+(d===0?'bugün doluyor':d+' gün içinde doluyor')+'. Acil aksiyon gerekebilir.',
+        meta:l.ticker+' · '+d+' DTE · '+l.expiry});
+    } else if(d<=90){
+      alerts.push({type:'warn',icon:'📅',
+        title:'LEAPS Expiry Approaching — '+l.ticker,
+        desc:l.ticker+' '+l.direction+' $'+l.strike+' vadesi '+d+' gün içinde doluyor. Değerlendirme zamanı.',
+        meta:l.ticker+' · '+d+' DTE · '+l.expiry});
+    }
+  });
   if(cp>0.6)alerts.push({type:'danger',icon:'🔴',title:'Collateral Overloaded',desc:'At '+(cp*100).toFixed(0)+'% — over 60% max.',meta:fmtA$(coll)});
   else alerts.push({type:'ok',icon:'✅',title:'Collateral Healthy',desc:'At '+(cp*100).toFixed(0)+'% — within 60% max.',meta:fmtA$(coll)+' of '+fmtA$(PORT_SIZE)});
   var tot=alerts.filter(function(a){return a.type!=='ok';}).length; var dc=alerts.filter(function(a){return a.type==='danger';}).length;
@@ -1849,7 +1866,7 @@ function renderLeaps(){
         '<div><div class="leap-metric-lbl">Paid</div><div class="leap-metric-val">$'+(l.costPer||'—')+'</div></div>'+
         '<div><div class="leap-metric-lbl">Current</div><div class="leap-metric-val" style="color:'+(gain>=0?'var(--profit)':'var(--loss)')+'">$'+(l.currentPer||'—')+'</div></div>'+
         '<div><div class="leap-metric-lbl">Qty</div><div class="leap-metric-val">'+(l.qty||1)+'</div></div>'+
-        '<div><div class="leap-metric-lbl">DTE</div><div class="leap-metric-val">'+(dte!==null?dte:'—')+'</div></div>'+
+        '<div><div class="leap-metric-lbl">DTE</div><div class="leap-metric-val" style="color:'+(dte===null?'var(--text-3)':dte<=60?'var(--loss)':dte<=90?'var(--warn)':'var(--profit)')+';font-weight:700">'+(dte!==null?dte+'d':'—')+'</div></div>'+
       '</div>'+
       '<div class="leap-progress-wrap">'+
         '<div class="leap-progress-label"><span>Hedef: '+(l.target?'$'+l.target:'—')+'</span><span>'+(gain>=0?'+':'')+((gp*100).toFixed(1))+'%</span></div>'+
@@ -1873,7 +1890,7 @@ function showAddLeap(existingLeap){
       '<select id="lf_d" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;"><option>Call</option><option>Put</option></select></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
       '<input id="lf_s" placeholder="Strike" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;">'+
-      '<input id="lf_e" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;"></div>'+
+      '<div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-bottom:5px">Vade (Expiry)</div><input id="lf_e" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
       '<input id="lf_c" type="number" placeholder="Alış fiyatı ($)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;">'+
       '<input id="lf_cur" type="number" placeholder="Güncel fiyat ($)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 14px;color:#F1F5F9;font-size:14px;outline:none;"></div>'+
