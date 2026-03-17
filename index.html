@@ -1306,7 +1306,9 @@ function renderTradeList(filter, month){
         '<span style="color:'+dc+';font-family:var(--font-mono);font-size:10px;">'+(isOpen&&dte!==null?dte+' DTE':(t.closed?'Closed':'—'))+'</span></div>'+
         '<div class="dte-bar"><div class="dte-fill" style="width:'+(isOpen?dw:Math.min(100,Math.abs((t.pct||0)*100)))+'%;background:'+df+'"></div></div></div>'+
         '<div class="status-label"><div class="status-dot" style="background:'+(isOpen?(isAlert?'var(--loss)':'var(--profit)'):'var(--text-3)')+'"></div>'+
-        '<span style="color:'+(isOpen?(isAlert?'var(--loss)':'var(--profit)'):'var(--text-3)')+';">'+(isAlert?'ALERT':isOpen?'OPEN':'CLOSED')+'</span></div></div></div>';
+        '<span style="color:'+(isOpen?(isAlert?'var(--loss)':'var(--profit)'):'var(--text-3)')+';">'+(isAlert?'ALERT':isOpen?'OPEN':'CLOSED')+'</span></div></div>'+
+      (t.note ? '<div style="margin:0 14px 12px;padding:8px 11px;background:rgba(245,158,11,0.12);border-left:3px solid var(--warn);border-radius:0 6px 6px 0;font-size:11px;color:var(--warn);line-height:1.4">📝 '+t.note+'</div>' : '')+
+    '</div>';
   }).join('');
 }
 
@@ -1514,8 +1516,8 @@ function calcTaxForTrade(t){
 
 function renderVergi(){
   var vergiYil = document.getElementById('vergiYilSec') ? document.getElementById('vergiYilSec').value : '2026';
-  var closed = getClosedTrades().filter(function(t){
-    return t.closed && t.closed.substring(0,4) === vergiYil;
+  var closed = getAllTrades().filter(function(t){
+    return t.closed && t.pnl != null && t.closed.substring(0,4) === vergiYil;
   });
   var totalMatrah = 0; var totalUSD = 0; var missingKur = 0;
   var rows = [];
@@ -1529,20 +1531,26 @@ function renderVergi(){
 
   // Sub
   var sub = document.getElementById('vergiSub');
-  if(sub) sub.textContent = closed.length + ' kapatılan trade · ' + (missingKur>0 ? missingKur+' kur eksik' : 'tüm kurlar girilmiş');
+  if(sub) sub.textContent = closed.length + ' kapatilan trade | ' + (missingKur>0 ? missingKur+' kur eksik' : 'tum kurlar girilmis');
 
   // Özet kartlar
   var oc = document.getElementById('vergiOzetCards');
-  if(oc) oc.innerHTML = [
-    {l:'Toplam Matrah (TRY)', v: totalMatrah.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺', c: totalMatrah>=0?'var(--profit)':'var(--loss)'},
-    {l:'Toplam P&L (USD)', v: fmt$(totalUSD), c: totalUSD>=0?'var(--profit)':'var(--loss)'},
-    {l:'Eksik Kur Sayısı', v: missingKur, c: missingKur>0?'var(--warn)':'var(--profit)'},
-    {l:'İşlem Sayısı', v: closed.length, c:'var(--info)'}
-  ].map(function(x){
-    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">' +
-      '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px;">'+x.l+'</div>'+
-      '<div style="font-family:var(--font-head);font-size:18px;font-weight:700;color:'+x.c+'">'+x.v+'</div></div>';
-  }).join('');
+  if(oc){
+    var ozCards=[
+      {l:'Toplam Matrah',v:Math.round(totalMatrah).toLocaleString()+' TRY',c:totalMatrah>=0?'var(--profit)':'var(--loss)'},
+      {l:'Toplam P&L (USD)',v:fmt$(totalUSD),c:totalUSD>=0?'var(--profit)':'var(--loss)'},
+      {l:'Eksik Kur',v:missingKur,c:missingKur>0?'var(--warn)':'var(--profit)'},
+      {l:'Islem Sayisi',v:closed.length,c:'var(--info)'}
+    ];
+    while(oc.firstChild)oc.removeChild(oc.firstChild);
+    ozCards.forEach(function(x){
+      var card=document.createElement('div');
+      card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px';
+      var lbl=document.createElement('div');lbl.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px';lbl.textContent=x.l;
+      var val=document.createElement('div');val.style.cssText='font-family:var(--font-head);font-size:18px;font-weight:700;color:'+x.c;val.textContent=x.v;
+      card.appendChild(lbl);card.appendChild(val);oc.appendChild(card);
+    });
+  }
 
   // Kur listesi
   renderKurListesi();
@@ -1552,38 +1560,88 @@ function renderVergi(){
   if(kl){
     if(!closed.length){ kl.innerHTML='<div style="color:var(--text-3);font-size:13px;text-align:center;padding:10px;">Kapatılan trade yok</div>'; }
     else {
-      kl.innerHTML = '<div style="display:grid;grid-template-columns:1fr 100px 100px;gap:6px;margin-bottom:6px;padding:0 2px;">'+
-        '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Trade</div>'+
-        '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Açılış Kom. ($)</div>'+
-        '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Kapanış Kom. ($)</div></div>'+
-        closed.map(function(t){
-          var td = taxData[t.id]||{};
-          return '<div style="display:grid;grid-template-columns:1fr 100px 100px;gap:6px;margin-bottom:6px;align-items:center;">'+
-            '<div style="font-size:12px;font-weight:600;color:var(--text);">'+t.ticker+' <span style="font-size:10px;color:var(--text-3);">'+t.opened+'→'+t.closed+'</span></div>'+
-            '<input type="number" step="0.01" placeholder="0.00" value="'+(td.komAcilis||'')+'" data-tid="'+t.id+'" data-field="komAcilis" onchange="saveTaxField(this)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:100%;">'+
-            '<input type="number" step="0.01" placeholder="0.00" value="'+(td.komKapanis||'')+'" data-tid="'+t.id+'" data-field="komKapanis" onchange="saveTaxField(this)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:100%;">'+
-          '</div>';
-        }).join('');
+      var komHtml = '<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:6px;margin-bottom:8px">';
+      komHtml += '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600">Trade</div>';
+      komHtml += '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600">Acilis ($)</div>';
+      komHtml += '<div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600">Kapanis ($)</div></div>';
+      closed.forEach(function(t){
+        var td2 = taxData[t.id]||{};
+        komHtml += '<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:6px;margin-bottom:8px;align-items:center">';
+        komHtml += '<div style="font-size:11px;font-weight:600;color:var(--text)">'+t.ticker+'<br><span style="font-size:9px;color:var(--text-3)">'+t.opened+'>'+t.closed+'</span></div>';
+        komHtml += '<input type="number" step="0.01" placeholder="0" value="'+(td2.komAcilis||'')+'" data-tid="'+t.id+'" data-field="komAcilis" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:100%">';
+        komHtml += '<input type="number" step="0.01" placeholder="0" value="'+(td2.komKapanis||'')+'" data-tid="'+t.id+'" data-field="komKapanis" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:100%">';
+        komHtml += '</div>';
+      });
+      kl.innerHTML = komHtml;
+      var klNew = kl.cloneNode(true);
+      kl.parentNode.replaceChild(klNew, kl);
+      klNew.addEventListener('change', function(e){
+        if(e.target.dataset.tid && e.target.dataset.field) saveTaxField(e.target);
+      });
     }
   }
 
-  // Vergi tablosu
+  // Vergi tablosu - DOM only, no innerHTML string concat
   var vt = document.getElementById('vergiTablosu');
   if(vt){
-    vt.innerHTML = rows.map(function(r){
-      var t=r.t; var res=r.res;
-      var tc2 = tcol(t.ticker.split(' ')[0]);
-      var matrahColor = !res.hasKur ? 'var(--text-3)' : res.matrah_try>=0 ? 'var(--profit)' : 'var(--loss)';
-      var matrahTxt = !res.hasKur ? '—' : res.matrah_try.toLocaleString('tr-TR',{minimumFractionDigits:0,maximumFractionDigits:0})+' ₺';
-      return '<div style="display:grid;grid-template-columns:1fr 60px 70px 80px 80px 80px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:12px;gap:4px;align-items:center;">'+
-        '<div><span style="font-family:var(--font-head);font-weight:600;color:'+tc2.color+'">'+t.ticker+'</span><div style="font-size:10px;color:var(--text-3);margin-top:1px;">'+t.closed+'</div></div>'+
-        '<div style="font-size:10px;padding:2px 5px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--text-2);text-align:center;">'+t.type+'</div>'+
-        '<div style="font-family:var(--font-mono);color:'+(t.pnl>=0?'var(--profit)':'var(--loss)')+'">'+fmt$(t.pnl)+'</div>'+
-        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.acilis_kur>0?res.acilis_kur.toFixed(4):'<span style="color:var(--warn)">—</span>')+'</div>'+
-        '<div style="font-family:var(--font-mono);color:var(--text-2);">'+(res.kapanis_kur>0?res.kapanis_kur.toFixed(4):'<span style="color:var(--warn)">—</span>')+'</div>'+
-        '<div style="font-family:var(--font-mono);font-weight:600;color:'+matrahColor+'">'+matrahTxt+'</div>'+
-      '</div>';
-    }).join('') || '<div style="text-align:center;padding:20px;color:var(--text-3);">Kapatılan trade yok</div>';
+    while(vt.firstChild) vt.removeChild(vt.firstChild);
+    if(!rows.length){
+      var emp=document.createElement('div');
+      emp.style.cssText='text-align:center;padding:20px;color:var(--text-3)';
+      emp.textContent='Kapatilan trade yok';
+      vt.appendChild(emp);
+    } else {
+      rows.forEach(function(r){
+        var tr=r.t; var res=r.res;
+        var tc2=tcol(tr.ticker.split(' ')[0]);
+        var matrahColor=!res.hasKur?'var(--text-3)':res.matrah_try>=0?'var(--profit)':'var(--loss)';
+        var matrahVal=!res.hasKur?'-':Math.round(res.matrah_try).toLocaleString()+' TRY';
+
+        var row=document.createElement('div');
+        row.style.cssText='display:grid;grid-template-columns:1fr 55px 70px 75px 75px 80px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:12px;gap:4px;align-items:center';
+
+        // Ticker + date
+        var c1=document.createElement('div');
+        var sp=document.createElement('span');
+        sp.style.cssText='font-family:var(--font-head);font-weight:600;color:'+tc2.color;
+        sp.textContent=tr.ticker;
+        var dt=document.createElement('div');
+        dt.style.cssText='font-size:10px;color:var(--text-3);margin-top:1px';
+        dt.textContent=tr.closed;
+        c1.appendChild(sp); c1.appendChild(dt);
+
+        // Type
+        var c2=document.createElement('div');
+        c2.style.cssText='font-size:10px;padding:2px 5px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--text-2);text-align:center';
+        c2.textContent=tr.type;
+
+        // PnL
+        var c3=document.createElement('div');
+        c3.style.cssText='font-family:var(--font-mono);color:'+(tr.pnl>=0?'var(--profit)':'var(--loss)');
+        c3.textContent=fmt$(tr.pnl);
+
+        // Acilis kur
+        var c4=document.createElement('div');
+        c4.style.cssText='font-family:var(--font-mono);color:var(--text-2)';
+        c4.textContent=res.acilis_kur>0?res.acilis_kur.toFixed(4):'-';
+        if(!res.acilis_kur) c4.style.color='var(--warn)';
+
+        // Kapanis kur
+        var c5=document.createElement('div');
+        c5.style.cssText='font-family:var(--font-mono);color:var(--text-2)';
+        c5.textContent=res.kapanis_kur>0?res.kapanis_kur.toFixed(4):'-';
+        if(!res.kapanis_kur) c5.style.color='var(--warn)';
+
+        // Matrah
+        var c6=document.createElement('div');
+        c6.style.cssText='font-family:var(--font-mono);font-weight:600;color:'+matrahColor;
+        c6.textContent=matrahVal;
+
+        row.appendChild(c1);row.appendChild(c2);row.appendChild(c3);
+        row.appendChild(c4);row.appendChild(c5);row.appendChild(c6);
+        vt.appendChild(row);
+      });
+    }
   }
 }
 
@@ -1634,8 +1692,64 @@ function saveTaxField(input){
   if(!taxData[tid]) taxData[tid] = {};
   taxData[tid][field] = val;
   saveTaxData();
-  // Re-render just the table
-  renderVergi();
+  refreshVergiCalc();
+}
+
+function refreshVergiCalc(){
+  var vergiYil = document.getElementById('vergiYilSec') ? document.getElementById('vergiYilSec').value : '2026';
+  var closed2 = getAllTrades().filter(function(t){ return t.closed && t.pnl!=null && t.closed.substring(0,4)===vergiYil; });
+  var totalM=0, totalU=0, missingK=0, rows2=[];
+  closed2.forEach(function(t){
+    var res2=calcTaxForTrade(t);
+    if(!res2.hasKur) missingK++;
+    else { totalM+=res2.matrah_try; totalU+=(t.pnl||0); }
+    rows2.push({t:t,res:res2});
+  });
+  var sub=document.getElementById('vergiSub');
+  if(sub) sub.textContent=closed2.length+' kapatilan trade | '+(missingK>0?missingK+' kur eksik':'tum kurlar girilmis');
+  var oc=document.getElementById('vergiOzetCards');
+  if(oc){
+    var oz=[
+      {l:'Toplam Matrah',v:Math.round(totalM).toLocaleString()+' TRY',c:totalM>=0?'var(--profit)':'var(--loss)'},
+      {l:'Toplam P&L (USD)',v:fmt$(totalU),c:totalU>=0?'var(--profit)':'var(--loss)'},
+      {l:'Eksik Kur',v:missingK,c:missingK>0?'var(--warn)':'var(--profit)'},
+      {l:'Islem Sayisi',v:closed2.length,c:'var(--info)'}
+    ];
+    while(oc.firstChild)oc.removeChild(oc.firstChild);
+    oz.forEach(function(x){
+      var card=document.createElement('div');
+      card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px';
+      var lbl=document.createElement('div');lbl.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px';lbl.textContent=x.l;
+      var vEl=document.createElement('div');vEl.style.cssText='font-family:var(--font-head);font-size:18px;font-weight:700;color:'+x.c;vEl.textContent=x.v;
+      card.appendChild(lbl);card.appendChild(vEl);oc.appendChild(card);
+    });
+  }
+  var vt=document.getElementById('vergiTablosu');
+  if(vt){
+    while(vt.firstChild)vt.removeChild(vt.firstChild);
+    rows2.forEach(function(row2){
+      var tr2=row2.t; var res3=row2.res;
+      var tc2=tcol(tr2.ticker.split(' ')[0]);
+      var mColor=!res3.hasKur?'var(--text-3)':res3.matrah_try>=0?'var(--profit)':'var(--loss)';
+      var mVal=!res3.hasKur?'-':Math.round(res3.matrah_try).toLocaleString()+' TRY';
+      var rowEl=document.createElement('div');
+      rowEl.style.cssText='display:grid;grid-template-columns:1fr 55px 70px 75px 75px 80px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:12px;gap:4px;align-items:center';
+      var c1=document.createElement('div');
+      var sp=document.createElement('span');sp.style.cssText='font-family:var(--font-head);font-weight:600;color:'+tc2.color;sp.textContent=tr2.ticker;
+      var dt=document.createElement('div');dt.style.cssText='font-size:10px;color:var(--text-3);margin-top:1px';dt.textContent=tr2.closed;
+      c1.appendChild(sp);c1.appendChild(dt);
+      var c2=document.createElement('div');c2.style.cssText='font-size:10px;padding:2px 5px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--text-2);text-align:center';c2.textContent=tr2.type;
+      var c3=document.createElement('div');c3.style.cssText='font-family:var(--font-mono);color:'+(tr2.pnl>=0?'var(--profit)':'var(--loss)');c3.textContent=fmt$(tr2.pnl);
+      var c4=document.createElement('div');c4.style.cssText='font-family:var(--font-mono);color:var(--text-2)';c4.textContent=res3.acilis_kur>0?res3.acilis_kur.toFixed(4):'-';
+      if(!res3.acilis_kur)c4.style.color='var(--warn)';
+      var c5=document.createElement('div');c5.style.cssText='font-family:var(--font-mono);color:var(--text-2)';c5.textContent=res3.kapanis_kur>0?res3.kapanis_kur.toFixed(4):'-';
+      if(!res3.kapanis_kur)c5.style.color='var(--warn)';
+      var c6=document.createElement('div');c6.style.cssText='font-family:var(--font-mono);font-weight:600;color:'+mColor;c6.textContent=mVal;
+      rowEl.appendChild(c1);rowEl.appendChild(c2);rowEl.appendChild(c3);
+      rowEl.appendChild(c4);rowEl.appendChild(c5);rowEl.appendChild(c6);
+      vt.appendChild(rowEl);
+    });
+  }
 }
 
 // ═══════════════════ LEAPS ═══════════════════
