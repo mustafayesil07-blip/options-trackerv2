@@ -1584,6 +1584,19 @@ function showAddTrade(existingTrade){
 
       '<!-- KAPANIŞ BÖLÜMÜ -->'+
       '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:4px 0 10px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">📌 Kapanış Bilgileri <span style="color:rgba(255,255,255,.2);font-weight:400;">(Açık pozisyon için boş bırak)</span></div>'+
+      (isEdit&&existingTrade.partialCloses&&existingTrade.partialCloses.length>0?
+        '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:10px 12px;margin-bottom:12px;">'+
+        '<div style="font-size:10px;color:var(--warn);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">📊 Kapanış Geçmişi (salt okunur)</div>'+
+        existingTrade.partialCloses.map(function(pc,i){
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;">'+
+            '<span style="color:var(--text-2)">'+(i+1)+'. '+pc.date+' · '+pc.qty+' kontrat · Kom: $'+(pc.closeCommission||0)+'</span>'+
+            '<span style="font-family:monospace;font-weight:600;color:'+(pc.pnl>=0?'var(--profit)':'var(--loss)')+'">'+((pc.pnl>=0?'+':'')+pc.pnl.toFixed(2))+'</span>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:flex;justify-content:space-between;padding:5px 0 0;font-size:11px;font-weight:700;"><span style="color:var(--text-2)">Toplam</span>'+
+        '<span style="font-family:monospace;color:'+(existingTrade.pnl>=0?'var(--profit)':'var(--loss)')+'">'+((existingTrade.pnl>=0?'+':'')+existingTrade.pnl.toFixed(2))+'</span></div>'+
+        '</div>'
+      :'')+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
         _fldWrap('Kapanış Tarihi','<input id="nt_cd" type="date" style="'+s+'"'+(isEdit&&existingTrade.closed?' value="'+existingTrade.closed+'"':'')+'>') +
         _fldWrap('P&L ($)','<input id="nt_pnl" type="number" step="0.01" placeholder="boş = açık pozisyon" style="'+s+'"'+(isEdit&&existingTrade.pnl!=null?' value="'+existingTrade.pnl+'"':'')+'>') +
@@ -1707,7 +1720,7 @@ function calcTaxForTrade(t){
   var hasAllKur = acilis_kur > 0;
 
   if(partialCloses.length > 0){
-    // Açılış prim oranı: kontrat başına
+    // Açılış prim ve komisyonu kontrat başına paylaştır
     var openPremPerQ = openPrem / totalQ;
     var komAcilisPerQ = komAcilis / totalQ;
 
@@ -1717,23 +1730,35 @@ function calcTaxForTrade(t){
       var pcKur = pc.kapanis_kur || getKur(pc.date) || 0;
       if(!pcKur) hasAllKur = false;
 
-      // Bu kısım için açılış primini oranla
+      // Bu kısım için açılış prim ve komisyonu oranla
       var pcOpenPrem = openPremPerQ * pQty;
       var pcKomAcilis = komAcilisPerQ * pQty;
 
-      // Kapanış primini hesapla
-      var pcClosePrem = (pc.closePremium != null && !isNaN(pc.closePremium))
-        ? parseFloat(pc.closePremium)
-        : (isLong(t.type) ? pcOpenPrem + (pc.pnl||0) : pcOpenPrem - (pc.pnl||0));
+      // Kapanış primini al (varsa doğrudan, yoksa pnl'den türet)
+      var pcClosePrem;
+      if(pc.closePremium != null && !isNaN(pc.closePremium) && parseFloat(pc.closePremium) >= 0){
+        pcClosePrem = parseFloat(pc.closePremium);
+      } else {
+        // pnl = openPrem - closePrem - komisyonlar (short) => closePrem = openPrem - pnl - komisyonlar
+        var pcPnl = pc.pnl || 0;
+        if(isLong(t.type)){
+          pcClosePrem = pcOpenPrem + pcPnl + pcKomAcilis + pcKapanis;
+        } else {
+          pcClosePrem = pcOpenPrem - pcPnl - pcKomAcilis - pcKapanis;
+        }
+      }
       if(pcClosePrem < 0) pcClosePrem = 0;
 
       totalKomKapanis += pcKapanis;
       totalClosePrem  += pcClosePrem;
 
-      // Matrah: her kısım için kendi kapanış kuruyla
+      // Matrah: her kısım kendi kapanış kuruyla
+      // Formül: (hesaba giren - kom) * kur - (hesaptan çıkan + kom) * kur
       if(isLong(t.type)){
+        // Long: açılışta çıkan = openPrem+komAcilis, kapanışta giren = closePrem-komKapanis
         matrah_try += (pcClosePrem - pcKapanis) * pcKur - (pcOpenPrem + pcKomAcilis) * acilis_kur;
       } else {
+        // Short: açılışta giren = openPrem-komAcilis, kapanışta çıkan = closePrem+komKapanis
         matrah_try += (pcOpenPrem - pcKomAcilis) * acilis_kur - (pcClosePrem + pcKapanis) * pcKur;
       }
     });
@@ -2216,34 +2241,53 @@ function openTradeDetail(tradeId, month){
     closeBtn.onclick=function(){
       var d=document.getElementById('td_date').value;
       var pStr=document.getElementById('td_pnl').value;
-      var cpVal=parseFloat(document.getElementById('td_cp').value);
+      var cpVal=parseFloat(document.getElementById('td_cp').value); // bu kapanıştaki toplam ödenen/alınan prim
       var komK=parseFloat(document.getElementById('td_kom_k').value)||0;
       if(!d){alert('Tarih gir');return;}
+
+      // Kaç kontrat kapatılıyor?
+      var closingQty = isPartialMode
+        ? Math.min(parseInt(document.getElementById('td_qty').value)||1, remainingQ)
+        : remainingQ;
+
+      // P&L hesabı: girilen değer varsa kullan, yoksa kapanış priminden hesapla
+      // Kapanış primi ve komisyon bu işlemdeki TÜM kapatılan kontratlar için girilmeli
       var p;
-      if(pStr!==''&&!isNaN(parseFloat(pStr))){p=parseFloat(pStr);}
-      else if(!isNaN(cpVal)&&cpVal>=0){var _op=parseFloat(trade.openPremium)||parseFloat(trade.premium)||0;var _ok=parseFloat(trade.openCommission)||0;p=isLong(trade.type)?(cpVal-komK-_op-_ok):(_op-_ok-cpVal-komK);}
-      else{alert('P&L veya Kapanış Primini gir');return;}
+      if(pStr!==''&&!isNaN(parseFloat(pStr))){
+        p=parseFloat(pStr);
+      } else if(!isNaN(cpVal)&&cpVal>=0){
+        // Açılış primini kapatılan kontrat oranında al
+        var _totalQ=trade.q||1;
+        var _opPerQ=(parseFloat(trade.openPremium)||parseFloat(trade.premium)||0)/_totalQ;
+        var _okPerQ=(parseFloat(trade.openCommission)||0)/_totalQ;
+        var _opForThis=_opPerQ*closingQty;
+        var _okForThis=_okPerQ*closingQty;
+        p=isLong(trade.type)?(cpVal-komK-_opForThis-_okForThis):(_opForThis-_okForThis-cpVal-komK);
+      } else {
+        alert('P&L veya Kapanış Primini gir');return;
+      }
+      p=Math.round(p*100)/100;
+
       var months=Object.keys(tradesData);
       if(isPartialMode){
-        var qty=Math.min(parseInt(document.getElementById('td_qty').value)||1,remainingQ);
+        var qty=closingQty;
         if(qty<1||qty>remainingQ){alert('Geçerli kontrat sayısı gir (1-'+remainingQ+')');return;}
-        var pcEntry={date:d,qty:qty,pnl:Math.round(p*100)/100,closePremium:!isNaN(cpVal)?Math.round(cpVal*100)/100:null,closeCommission:Math.round(komK*100)/100,acilis_kur:getKur(trade.opened)||0,kapanis_kur:getKur(d)||0};
+        var pcEntry={date:d,qty:qty,pnl:p,closePremium:!isNaN(cpVal)?Math.round(cpVal*100)/100:null,closeCommission:Math.round(komK*100)/100,acilis_kur:getKur(trade.opened)||0,kapanis_kur:getKur(d)||0};
         for(var mi=0;mi<months.length;mi++){var arr=tradesData[months[mi]];for(var ti=0;ti<arr.length;ti++){if(arr[ti].id==tradeId){if(!arr[ti].partialCloses)arr[ti].partialCloses=[];arr[ti].partialCloses.push(pcEntry);var newCQ=arr[ti].partialCloses.reduce(function(s,x){return s+(x.qty||0);},0);if(newCQ>=(arr[ti].q||1)){var tPnl=arr[ti].partialCloses.reduce(function(s,x){return s+(x.pnl||0);},0);arr[ti].closed=d;arr[ti].pnl=Math.round(tPnl*100)/100;arr[ti].pct=arr[ti].premium?arr[ti].pnl/Math.abs(arr[ti].premium):null;}break;}}}
       } else {
-        // TAM KAPAT: Son kapanışı da partialCloses'a ekle, toplam pnl'i hesapla
+        // TAM KAPAT: Son kapanışı partialCloses'a ekle
         for(var mi2=0;mi2<months.length;mi2++){
           var arr2=tradesData[months[mi2]];
           for(var ti2=0;ti2<arr2.length;ti2++){
             if(arr2[ti2].id==tradeId){
               var _t=arr2[ti2];
-              // Son kapanışı partialCloses'a ekle (kalan kontrat sayısı kadar)
               var _alreadyClosed=(_t.partialCloses||[]).reduce(function(s,x){return s+(x.qty||0);},0);
               var _lastQty=(_t.q||1)-_alreadyClosed;
               if(_lastQty<1)_lastQty=1;
               var lastEntry={
                 date:d,
                 qty:_lastQty,
-                pnl:Math.round(p*100)/100,
+                pnl:p,
                 closePremium:!isNaN(cpVal)&&cpVal>=0?Math.round(cpVal*100)/100:null,
                 closeCommission:Math.round(komK*100)/100,
                 acilis_kur:getKur(_t.opened)||0,
@@ -2251,7 +2295,7 @@ function openTradeDetail(tradeId, month){
               };
               if(!_t.partialCloses)_t.partialCloses=[];
               _t.partialCloses.push(lastEntry);
-              // Toplam PnL = tüm partial'ların pnl toplamı
+              // Toplam PnL = tüm partial'ların toplamı
               var totalPnl=_t.partialCloses.reduce(function(s,x){return s+(x.pnl||0);},0);
               _t.closed=d;
               _t.pnl=Math.round(totalPnl*100)/100;
