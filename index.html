@@ -728,6 +728,26 @@
       </div>
       <div style="margin-top:12px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div id="collBarFill" style="width:0%;height:100%;background:linear-gradient(90deg,var(--info),var(--warn));border-radius:3px;transition:width 0.8s ease;"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--text-3);"><span>$0</span><span style="color:var(--profit)">Comfortable zone</span><span id="portSizeLabel" style="color:var(--text-2)">$180K</span></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;">Ort. Günlük Teminat <span id="avgCollMonthLabel" style="color:var(--info)">(Bu Ay)</span></div>
+          <div style="display:flex;align-items:baseline;gap:8px;">
+            <div class="hero-val" id="heroAvgColl" style="font-size:22px;color:var(--warn);">—</div>
+            <div style="font-size:11px;color:var(--text-3)" id="heroAvgCollSub"></div>
+          </div>
+        </div>
+        <div style="text-align:right;display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;">Ort. Kullanım</div>
+            <div style="font-size:16px;font-weight:700;font-family:var(--font-head)" id="heroAvgCollPct">—</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;">Realized Return</div>
+            <div style="font-size:18px;font-weight:700;font-family:var(--font-head)" id="heroRealizedReturn">—</div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px" id="heroRealizedReturnSub"></div>
+          </div>
+        </div>
+      </div>
       <div style="margin-top:10px;text-align:right">
         <button id="editPortBtn" style="background:var(--info);border:none;border-radius:8px;padding:7px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✎ Portföy Boyutunu Düzenle</button>
       </div>
@@ -1320,6 +1340,87 @@ function renderDashboard(){
   el=document.getElementById('heroOpenPremTotal');
   if(el){ el.textContent=fmtA$(openPremNet); el.style.color=openPremNet>=0?'var(--profit)':'var(--loss)'; }
   el=document.getElementById('heroCollateral'); if(el)el.textContent=fmtA$(coll);
+
+  // Ortalama günlük teminat hesabı
+  (function(){
+    var today = new Date(); today.setHours(0,0,0,0);
+    // Hangi ay için hesaplanacak
+    var _allT = getAllTrades();
+    // Ay filtresi yoksa mevcut ayı al
+    var _calcMonth = month !== 'all' ? month : null;
+    // Mevcut ayı bul (bugünün ayı)
+    var _monthNames = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+    var _curMonthName = _monthNames[today.getMonth()];
+    var _useMonth = _calcMonth || _curMonthName;
+
+    // O ayın başlangıç ve bitiş tarihleri
+    var _monthIdx = _monthNames.indexOf(_useMonth);
+    var _year = today.getFullYear();
+    if(_monthIdx === -1){ // Aralik gibi özel isimler
+      var _monthMap = {'Aralik':11,'Ocak':0,'Subat':1,'Mart':2,'Nisan':3,'Mayis':4,'Haziran':5,'Temmuz':6,'Agustos':7,'Eylul':8,'Ekim':9,'Kasim':10};
+      _monthIdx = _monthMap[_useMonth];
+      if(_monthIdx === undefined) _monthIdx = today.getMonth();
+    }
+    var _monthStart = new Date(_year, _monthIdx, 1);
+    var _monthEnd = new Date(_year, _monthIdx+1, 0); // ayın son günü
+    var _calcEnd = _monthEnd < today ? _monthEnd : today;
+
+    // Her gün için açık olan teminatları topla
+    var _totalCollDays = 0;
+    var _dayCount = 0;
+    var _d = new Date(_monthStart);
+    while(_d <= _calcEnd){
+      var _dayStr = _d.toISOString().split('T')[0];
+      var _dayColl = 0;
+      _allT.forEach(function(t){
+        if(!t.teminat || t.teminat <= 0) return;
+        var _open = t.opened ? new Date(t.opened) : null;
+        var _close = t.closed ? new Date(t.closed) : null;
+        if(!_open) return;
+        _open.setHours(0,0,0,0);
+        if(_close) _close.setHours(0,0,0,0);
+        // Bu gün pozisyon açık mıydı?
+        if(_d >= _open && (!_close || _d <= _close)){
+          _dayColl += (parseFloat(t.teminat)||0);
+        }
+      });
+      _totalCollDays += _dayColl;
+      _dayCount++;
+      _d.setDate(_d.getDate()+1);
+    }
+
+    var _avgColl = _dayCount > 0 ? _totalCollDays / _dayCount : 0;
+    var _avgPct = PORT_SIZE > 0 ? _avgColl / PORT_SIZE : 0;
+
+    var _lbl = document.getElementById('avgCollMonthLabel');
+    if(_lbl) _lbl.textContent = '(' + _useMonth + ')';
+
+    el = document.getElementById('heroAvgColl');
+    if(el){ el.textContent = fmtA$(_avgColl); el.style.color = _avgPct>0.6?'var(--loss)':_avgPct>0.4?'var(--warn)':'var(--info)'; }
+
+    el = document.getElementById('heroAvgCollSub');
+    if(el) el.textContent = _dayCount + ' gün ort.';
+
+    el = document.getElementById('heroAvgCollPct');
+    if(el){ el.textContent = (_avgPct*100).toFixed(0)+'%'; el.style.color = _avgPct>0.6?'var(--loss)':_avgPct>0.4?'var(--warn)':'var(--info)'; }
+
+    // Realized Return = o ay kapatılan trade'lerin toplam PnL / ortalama teminat
+    var _closedThisMonth = getAllTrades().filter(function(t){
+      return t.closed && t.pnl != null && t.month === _useMonth;
+    });
+    var _realizedPnl = _closedThisMonth.reduce(function(s,t){ return s + (t.pnl||0); }, 0);
+    var _realReturn  = _avgColl > 0 ? (_realizedPnl / _avgColl) * 100 : 0;
+
+    el = document.getElementById('heroRealizedReturn');
+    if(el){
+      el.textContent = (_realReturn >= 0 ? '+' : '') + _realReturn.toFixed(2) + '%';
+      el.style.color = _realReturn >= 0 ? 'var(--profit)' : 'var(--loss)';
+    }
+    el = document.getElementById('heroRealizedReturnSub');
+    if(el){
+      el.textContent = fmt$(_realizedPnl) + ' / ' + fmtA$(_avgColl);
+    }
+  })();
   el=document.getElementById('heroCollateralSub'); if(el)el.innerHTML='<span class="hero-badge '+(cp>0.6?'loss':cp>0.4?'warn':'info')+'">'+(cp*100).toFixed(0)+'% of $'+Math.round(PORT_SIZE/1000)+'K</span><span style="color:var(--text-3);font-size:11px;"> max 60%</span>';
   el=document.getElementById('heroCollPct'); if(el){el.textContent=(cp*100).toFixed(0)+'%';el.style.color=cp>0.6?'var(--loss)':cp>0.4?'var(--warn)':'var(--info)';}
   el=document.getElementById('collBarFill'); if(el)el.style.width=Math.min(100,cp*100)+'%';
