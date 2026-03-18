@@ -1094,6 +1094,11 @@ function getAllTrades() {
 }
 function getClosedTrades() { return getAllTrades().filter(function(t){ return t.closed && t.pnl != null; }); }
 function getOpenTrades()   { return getAllTrades().filter(function(t){ return !t.closed; }); }
+function getPartialCloses(t){ return (t.partialCloses||[]); }
+function getClosedQty(t){ return getPartialCloses(t).reduce(function(s,pc){return s+(pc.qty||0);},0); }
+function getRemainingQty(t){ return (t.q||1) - getClosedQty(t); }
+function isPartlyOpen(t){ var pc=getPartialCloses(t); return !t.closed && pc.length>0; }
+function getPartialPnl(t){ return getPartialCloses(t).reduce(function(s,pc){return s+(pc.pnl||0);},0); }
 
 function calcStats() {
   var closed = getClosedTrades();
@@ -1317,36 +1322,52 @@ function renderTradeList(filter, month){
   listEl.innerHTML=f.map(function(t){
     var isOpen=!t.closed; var dte=getDTE(t.expiry);
     var dc=dte===null?'var(--text-3)':dte<=7?'var(--loss)':dte<=14?'var(--warn)':'var(--info)';
-    // Auto-calc PnL from premiums if closePremium is set
+    // Auto-calc PnL; handle partly-open
+    var _partlyOpen = isPartlyOpen(t);
+    var _partialPnl = getPartialPnl(t);
+    var _remainingQty = getRemainingQty(t);
+    var _closedQty = getClosedQty(t);
     var displayPnl=t.pnl;
     if(!isOpen){var _op=parseFloat(t.openPremium)||parseFloat(t.premium)||0;var _cp=parseFloat(t.closePremium);var _ok=parseFloat(t.openCommission)||0;var _ck=parseFloat(t.closeCommission)||0;if(!isNaN(_cp)&&_cp>=0){displayPnl=isLong(t.type)?(_cp-_ck-_op-_ok):(_op-_ok-_cp-_ck);}}
-    var pc=!isOpen&&displayPnl!=null?(displayPnl>=0?'var(--profit)':'var(--loss)'):'var(--text-2)';
-    var _pct2=(!isOpen&&displayPnl!=null)?(function(){var _op2=parseFloat(t.openPremium)||parseFloat(t.premium)||0;return _op2>0?displayPnl/_op2:null;})():t.pct;
+    // For partly open: show partial pnl running total
+    var shownPnl = isOpen ? (_partlyOpen ? _partialPnl : null) : displayPnl;
+    var pc=(!isOpen||_partlyOpen)&&shownPnl!=null?(shownPnl>=0?'var(--profit)':'var(--loss)'):'var(--text-2)';
+    var _pct2=(!isOpen&&displayPnl!=null)?(function(){var _op2=parseFloat(t.openPremium)||parseFloat(t.premium)||0;return _op2>0?displayPnl/_op2:null;})():null;
     var tc=tcol(t.ticker.split(' ')[0]);
     var ab=isOpen&&((t.delta&&t.delta>35)||(dte!==null&&dte<=7))?'border-color:rgba(239,68,68,.35);':'';
     var dw=dte!==null&&t.expiry?Math.min(100,Math.max(0,((new Date()-new Date(t.opened))/(new Date(t.expiry)-new Date(t.opened)))*100)):0;
     var df=dte===null?'var(--profit)':dte<=7?'var(--loss)':dte<=14?'var(--warn)':'var(--info)';
     var isAlert=isOpen&&((t.delta&&t.delta>35)||(dte!==null&&dte<=7));
+    // Status label
+    var statusTxt = isAlert?'ALERT':(!isOpen?'CLOSED':(_partlyOpen?'PARTLY OPEN':'OPEN'));
+    var statusColor = isOpen?(_partlyOpen?'var(--warn)':(isAlert?'var(--loss)':'var(--profit)')):'var(--text-3)';
+    // Partial closes summary for card
+    var partialSummaryHtml = '';
+    if(_partlyOpen && _closedQty>0){
+      partialSummaryHtml = '<div style="margin:0 14px 10px;padding:7px 10px;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:0 6px 6px 0;font-size:11px;color:var(--warn);">'+
+        '📊 Kısmen kapalı: '+_closedQty+'/'+t.q+' kontrat · Kısmi P&L: <span style="color:'+((_partialPnl>=0)?'var(--profit)':'var(--loss)')+'">'+fmt$(_partialPnl)+'</span></div>';
+    }
     return'<div class="trade-card" style="'+ab+'" data-tid="'+t.id+'" data-tmonth="'+t.month+'">'+
       '<div class="trade-card-head"><div class="trade-card-left">'+
         '<div class="trade-ticker-badge" style="background:'+tc.bg+';color:'+tc.color+'">'+t.ticker.split(' ')[0].slice(0,4)+'</div>'+
         '<div><div class="trade-ticker">'+t.ticker+' <span class="strategy-tag '+tagCls(t.type)+'">'+t.type+'</span></div>'+
         '<div class="trade-date">'+t.opened+(t.closed?' > '+t.closed:' > open')+'</div></div></div>'+
-        '<div><div class="trade-pnl-val" style="color:'+pc+'">'+(isOpen?'Open':fmt$(displayPnl))+'</div>'+
-        '<div class="trade-pnl-pct" style="color:'+pc+'">'+(_pct2!=null?fmtP(_pct2):(isOpen?'pending':''))+'</div></div></div>'+
+        '<div><div class="trade-pnl-val" style="color:'+pc+'">'+(isOpen?(_partlyOpen?fmt$(shownPnl):'Open'):fmt$(displayPnl))+'</div>'+
+        '<div class="trade-pnl-pct" style="color:'+pc+'">'+(_pct2!=null?fmtP(_pct2):(_partlyOpen?(_remainingQty+' kontrat açık'):(isOpen?'pending':'')))+'</div></div></div>'+
       '<div class="trade-card-body">'+
         '<div><div class="trade-metric-lbl">Strike</div><div class="trade-metric-val">$'+t.strike+'</div></div>'+
         '<div><div class="trade-metric-lbl">Premium</div><div class="trade-metric-val">'+fmtA$(t.premium)+'</div></div>'+
-        '<div><div class="trade-metric-lbl">Qty</div><div class="trade-metric-val">'+t.q+' × 100</div></div>'+
+        '<div><div class="trade-metric-lbl">Qty</div><div class="trade-metric-val">'+(_partlyOpen?(_remainingQty+'/'+t.q):t.q)+' × 100</div></div>'+
         '<div><div class="trade-metric-lbl">Delta</div><div class="trade-metric-val" style="color:'+(t.delta&&t.delta>35?'var(--loss)':'var(--info)')+'">'+(t.delta!=null?t.delta:'—')+'</div></div>'+
         '<div><div class="trade-metric-lbl">IVR</div><div class="trade-metric-val" style="color:'+(t.ivr&&t.ivr>50?'var(--profit)':t.ivr>30?'var(--warn)':'var(--text-3)')+'">'+(t.ivr||'—')+'</div></div>'+
         '<div><div class="trade-metric-lbl">Collateral</div><div class="trade-metric-val">'+(t.teminat>0?fmtA$(t.teminat):'—')+'</div></div></div>'+
+      partialSummaryHtml+
       '<div class="trade-card-foot"><div class="dte-bar-wrap">'+
         '<div class="dte-label"><span>'+(isOpen?'Time elapsed':'Result')+'</span>'+
         '<span style="color:'+dc+';font-family:var(--font-mono);font-size:10px;">'+(isOpen&&dte!==null?dte+' DTE':(t.closed?'Closed':'—'))+'</span></div>'+
         '<div class="dte-bar"><div class="dte-fill" style="width:'+(isOpen?dw:Math.min(100,Math.abs((t.pct||0)*100)))+'%;background:'+df+'"></div></div></div>'+
-        '<div class="status-label"><div class="status-dot" style="background:'+(isOpen?(isAlert?'var(--loss)':'var(--profit)'):'var(--text-3)')+'"></div>'+
-        '<span style="color:'+(isOpen?(isAlert?'var(--loss)':'var(--profit)'):'var(--text-3)')+';">'+(isAlert?'ALERT':isOpen?'OPEN':'CLOSED')+'</span></div></div>'+
+        '<div class="status-label"><div class="status-dot" style="background:'+statusColor+'"></div>'+
+        '<span style="color:'+statusColor+';">'+statusTxt+'</span></div></div>'+
       (t.note ? '<div style="margin:0 14px 12px;padding:8px 11px;background:rgba(245,158,11,0.12);border-left:3px solid var(--warn);border-radius:0 6px 6px 0;font-size:11px;color:var(--warn);line-height:1.4">📝 '+t.note+'</div>' : '')+
     '</div>';
   }).join('');
@@ -1638,63 +1659,100 @@ function isLong(type){ return LONG_TYPES.indexOf((type||'').trim()) !== -1; }
 
 function calcTaxForTrade(t){
   var td = taxData[t.id] || {};
-  // Komisyonlar: önce trade objesinden, yoksa taxData'dan
   var komAcilis  = parseFloat(t.openCommission)  || parseFloat(td.komAcilis)  || 0;
-  var komKapanis = parseFloat(t.closeCommission) || parseFloat(td.komKapanis) || 0;
+  var openPrem   = parseFloat(t.openPremium)  || Math.abs(parseFloat(t.premium) || 0);
+  var acilis_kur = getKur(t.opened) || 0;
+  var totalQ     = t.q || 1;
 
-  var openPrem  = parseFloat(t.openPremium)  || Math.abs(parseFloat(t.premium) || 0);
-  var closePrem = parseFloat(t.closePremium);
-  var pnl       = parseFloat(t.pnl) || 0;
-
-  // Eğer closePremium girilmemişse, pnl'den hesapla
-  if(isNaN(closePrem) || closePrem < 0){
-    if(isLong(t.type)){
-      closePrem = openPrem + pnl; // long: kapanışta aldığın = başlangıç + kâr
-    } else {
-      closePrem = openPrem - pnl; // short: kapanışta ödediğin = başlangıç - kâr
-    }
-    if(closePrem < 0) closePrem = 0;
-  }
-
-  // Gerçek PnL = alınan prim - ödenen prim - tüm komisyonlar
-  var realPnl;
-  if(isLong(t.type)){
-    // Long: Ödeme = openPrem (alış), Gelir = closePrem (satış)
-    realPnl = closePrem - komKapanis - openPrem - komAcilis;
-  } else {
-    // Short: Gelir = openPrem (satış açılış), Ödeme = closePrem (alış kapanış)
-    realPnl = openPrem - komAcilis - closePrem - komKapanis;
-  }
-
-  var acilis_kur  = getKur(t.opened)  || 0;
-  var kapanis_kur = getKur(t.closed)  || 0;
-
+  // Kısmi kapanmalar varsa her birini ayrı hesapla, topla
+  var partialCloses = t.partialCloses || [];
   var matrah_try = 0;
-  /*
-    Formül: (hesaba giren - komisyon) * işlem günü kuru - (hesaptan çıkan + komisyon) * işlem günü kuru
-    Short:  (openPrem - komAcilis) * acilis_kur  - (closePrem + komKapanis) * kapanis_kur
-    Long:   (closePrem - komKapanis) * kapanis_kur - (openPrem + komAcilis) * acilis_kur
-  */
-  if(isLong(t.type)){
-    var gelir_try = (closePrem - komKapanis) * kapanis_kur;
-    var maliyet_try = (openPrem + komAcilis) * acilis_kur;
-    matrah_try = gelir_try - maliyet_try;
+  var totalKomKapanis = 0;
+  var totalClosePrem  = 0;
+  var hasAllKur = acilis_kur > 0;
+
+  if(partialCloses.length > 0){
+    // Açılış prim oranı: kontrat başına
+    var openPremPerQ = openPrem / totalQ;
+    var komAcilisPerQ = komAcilis / totalQ;
+
+    partialCloses.forEach(function(pc){
+      var pQty = pc.qty || 1;
+      var pcKapanis = parseFloat(pc.closeCommission) || 0;
+      var pcKur = pc.kapanis_kur || getKur(pc.date) || 0;
+      if(!pcKur) hasAllKur = false;
+
+      // Bu kısım için açılış primini oranla
+      var pcOpenPrem = openPremPerQ * pQty;
+      var pcKomAcilis = komAcilisPerQ * pQty;
+
+      // Kapanış primini hesapla
+      var pcClosePrem = (pc.closePremium != null && !isNaN(pc.closePremium))
+        ? parseFloat(pc.closePremium)
+        : (isLong(t.type) ? pcOpenPrem + (pc.pnl||0) : pcOpenPrem - (pc.pnl||0));
+      if(pcClosePrem < 0) pcClosePrem = 0;
+
+      totalKomKapanis += pcKapanis;
+      totalClosePrem  += pcClosePrem;
+
+      // Matrah: her kısım için kendi kapanış kuruyla
+      if(isLong(t.type)){
+        matrah_try += (pcClosePrem - pcKapanis) * pcKur - (pcOpenPrem + pcKomAcilis) * acilis_kur;
+      } else {
+        matrah_try += (pcOpenPrem - pcKomAcilis) * acilis_kur - (pcClosePrem + pcKapanis) * pcKur;
+      }
+    });
+
+    // Kalan tam kapanış da varsa (tam kapatıldıysa ve partialCloses toplamı < q)
+    var closedQtyInPartials = partialCloses.reduce(function(s,x){return s+(x.qty||0);},0);
+    if(t.closed && closedQtyInPartials < totalQ){
+      // Geri kalan kısım tek seferde kapanmış
+      var remQ = totalQ - closedQtyInPartials;
+      var remOpenPrem = (openPrem / totalQ) * remQ;
+      var remKomAcilis = (komAcilis / totalQ) * remQ;
+      var kapanis_kur_main = getKur(t.closed) || 0;
+      if(!kapanis_kur_main) hasAllKur = false;
+      var komK2 = parseFloat(t.closeCommission)||parseFloat(td.komKapanis)||0;
+      var remClosePrem = parseFloat(t.closePremium);
+      if(isNaN(remClosePrem)||remClosePrem<0){remClosePrem=isLong(t.type)?remOpenPrem+(t.pnl||0):remOpenPrem-(t.pnl||0);}
+      if(remClosePrem<0)remClosePrem=0;
+      totalClosePrem += remClosePrem;
+      totalKomKapanis += komK2;
+      if(isLong(t.type)){
+        matrah_try += (remClosePrem - komK2) * kapanis_kur_main - (remOpenPrem + remKomAcilis) * acilis_kur;
+      } else {
+        matrah_try += (remOpenPrem - remKomAcilis) * acilis_kur - (remClosePrem + komK2) * kapanis_kur_main;
+      }
+    }
   } else {
-    var gelir_try2  = (openPrem - komAcilis) * acilis_kur;
-    var maliyet_try2 = (closePrem + komKapanis) * kapanis_kur;
-    matrah_try = gelir_try2 - maliyet_try2;
+    // Kısmi kapanma yok — standart hesap
+    var komKapanis = parseFloat(t.closeCommission)||parseFloat(td.komKapanis)||0;
+    var kapanis_kur = getKur(t.closed) || 0;
+    if(!kapanis_kur) hasAllKur = false;
+    var closePrem = parseFloat(t.closePremium);
+    var pnl = parseFloat(t.pnl)||0;
+    if(isNaN(closePrem)||closePrem<0){closePrem=isLong(t.type)?openPrem+pnl:openPrem-pnl;}
+    if(closePrem<0)closePrem=0;
+    totalClosePrem = closePrem;
+    totalKomKapanis = komKapanis;
+    if(isLong(t.type)){
+      matrah_try=(closePrem-komKapanis)*kapanis_kur-(openPrem+komAcilis)*acilis_kur;
+    } else {
+      matrah_try=(openPrem-komAcilis)*acilis_kur-(closePrem+komKapanis)*kapanis_kur;
+    }
   }
+
+  matrah_try = Math.round(matrah_try * 100) / 100;
 
   return {
     matrah_try: matrah_try,
     acilis_kur: acilis_kur,
-    kapanis_kur: kapanis_kur,
+    kapanis_kur: (partialCloses.length>0 ? (partialCloses[partialCloses.length-1].kapanis_kur||getKur(t.closed)||0) : (getKur(t.closed)||0)),
     komAcilis: komAcilis,
-    komKapanis: komKapanis,
+    komKapanis: totalKomKapanis,
     openPrem: openPrem,
-    closePrem: closePrem,
-    realPnl: realPnl,
-    hasKur: acilis_kur > 0 && kapanis_kur > 0
+    closePrem: totalClosePrem,
+    hasKur: hasAllKur && acilis_kur > 0
   };
 }
 
@@ -1721,7 +1779,7 @@ function renderVergi(){
   var oc = document.getElementById('vergiOzetCards');
   if(oc){
     var ozCards=[
-      {l:'Toplam Matrah',v:Math.round(totalMatrah).toLocaleString()+' TRY',c:totalMatrah>=0?'var(--profit)':'var(--loss)'},
+      {l:'Toplam Matrah',v:totalMatrah.toFixed(2)+' TRY',c:totalMatrah>=0?'var(--profit)':'var(--loss)'},
       {l:'Toplam P&L (USD)',v:fmt$(totalUSD),c:totalUSD>=0?'var(--profit)':'var(--loss)'},
       {l:'Eksik Kur',v:missingKur,c:missingKur>0?'var(--warn)':'var(--profit)'},
       {l:'Islem Sayisi',v:closed.length,c:'var(--info)'}
@@ -1812,7 +1870,7 @@ function renderVergi(){
         var tr=r.t; var res=r.res;
         var tc2=tcol(tr.ticker.split(' ')[0]);
         var matrahColor=!res.hasKur?'var(--text-3)':res.matrah_try>=0?'var(--profit)':'var(--loss)';
-        var matrahVal=!res.hasKur?'-':Math.round(res.matrah_try).toLocaleString()+' TRY';
+        var matrahVal=!res.hasKur?'-':res.matrah_try.toFixed(2)+' TRY';
 
         // Short: alınan=openPrem, ödenen=closePrem; Long: alınan=closePrem, ödenen=openPrem
         var alinan  = isLong(tr.type) ? res.closePrem : res.openPrem;
@@ -1945,7 +2003,7 @@ function refreshVergiCalc(){
   var oc=document.getElementById('vergiOzetCards');
   if(oc){
     var oz=[
-      {l:'Toplam Matrah',v:Math.round(totalM).toLocaleString()+' TRY',c:totalM>=0?'var(--profit)':'var(--loss)'},
+      {l:'Toplam Matrah',v:totalM.toFixed(2)+' TRY',c:totalM>=0?'var(--profit)':'var(--loss)'},
       {l:'Toplam P&L (USD)',v:fmt$(totalU),c:totalU>=0?'var(--profit)':'var(--loss)'},
       {l:'Eksik Kur',v:missingK,c:missingK>0?'var(--warn)':'var(--profit)'},
       {l:'Islem Sayisi',v:closed2.length,c:'var(--info)'}
@@ -1966,7 +2024,7 @@ function refreshVergiCalc(){
       var tr2=row2.t; var res3=row2.res;
       var tc2=tcol(tr2.ticker.split(' ')[0]);
       var mColor=!res3.hasKur?'var(--text-3)':res3.matrah_try>=0?'var(--profit)':'var(--loss)';
-      var mVal=!res3.hasKur?'-':Math.round(res3.matrah_try).toLocaleString()+' TRY';
+      var mVal=!res3.hasKur?'-':res3.matrah_try.toFixed(2)+' TRY';
       var alinan2  = isLong(tr2.type) ? res3.closePrem : res3.openPrem;
       var odenen2  = isLong(tr2.type) ? res3.openPrem  : res3.closePrem;
       var rowEl=document.createElement('div');
@@ -2167,88 +2225,82 @@ function openTradeDetail(tradeId, month){
   sh.appendChild(box);
 
   if(isOpen){
-    // Close section
     var sec=document.createElement('div');
     sec.style.cssText='margin-top:4px;padding-top:16px;border-top:1px solid var(--border)';
-    var stitle=document.createElement('div');
-    stitle.style.cssText='font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--text-3);margin-bottom:12px;text-transform:uppercase';
-    stitle.textContent='Pozisyonu Kapat';
+    var isLongPos2=LONG_TYPES.indexOf((trade.type||'').trim())!==-1;
+    var closePremLabel2=isLongPos2?'Alınan Prim — Kapanış ($)':'Ödenen Prim — Kapanış ($)';
+    var currentPC=trade.partialCloses||[];
+    var alreadyClosedQty=currentPC.reduce(function(s,pc){return s+(pc.qty||0);},0);
+    var remainingQ=(trade.q||1)-alreadyClosedQty;
+    // Mevcut kısmi kapanmalar
+    if(currentPC.length>0){
+      var pcListDiv=document.createElement('div');
+      pcListDiv.style.cssText='margin-bottom:12px;background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 12px';
+      var pcTitle=document.createElement('div');pcTitle.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px';pcTitle.textContent='Kısmi Kapanmalar';
+      pcListDiv.appendChild(pcTitle);
+      currentPC.forEach(function(pc){
+        var pcRow=document.createElement('div');pcRow.style.cssText='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px';
+        var pcL=document.createElement('span');pcL.style.cssText='color:var(--text-2)';pcL.textContent=pc.date+' · '+pc.qty+' kontrat';
+        var pcR=document.createElement('span');pcR.style.cssText='font-family:var(--font-mono);font-weight:600;color:'+(pc.pnl>=0?'var(--profit)':'var(--loss)');pcR.textContent=fmt$(pc.pnl);
+        pcRow.appendChild(pcL);pcRow.appendChild(pcR);pcListDiv.appendChild(pcRow);
+      });
+      sec.appendChild(pcListDiv);
+    }
+    var stitle=document.createElement('div');stitle.style.cssText='font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--text-3);margin-bottom:10px;text-transform:uppercase';
+    stitle.textContent='Pozisyonu Kapat ('+remainingQ+' kontrat kaldı)';
     sec.appendChild(stitle);
-
-    // Date + PnL row
-    var grow=document.createElement('div');grow.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px';
-    function inp(id,type,ph,lbl,defVal){
-      var wrap=document.createElement('div');
-      var label=document.createElement('label');
-      label.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px;display:block';
-      label.textContent=lbl;
-      var input=document.createElement('input');
-      input.id=id;input.type=type;input.placeholder=ph;
+    // Tam / Kısmi butonları
+    var typeRow=document.createElement('div');typeRow.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px';
+    var btnTam=document.createElement('button');btnTam.style.cssText='padding:9px;background:rgba(34,197,94,0.15);border:2px solid rgba(34,197,94,0.5);border-radius:9px;color:var(--profit);font-size:12px;font-weight:700;cursor:pointer';btnTam.textContent='✅ Tam Kapat';
+    var btnKismi=document.createElement('button');btnKismi.style.cssText='padding:9px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.3);border-radius:9px;color:var(--warn);font-size:12px;font-weight:700;cursor:pointer';btnKismi.textContent='⚡ Kısmi Kapat';
+    typeRow.appendChild(btnTam);typeRow.appendChild(btnKismi);sec.appendChild(typeRow);
+    // Form
+    function mkInp(id,type,ph,lbl){
+      var wrap=document.createElement('div');var label=document.createElement('label');
+      label.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px;display:block';label.textContent=lbl;
+      var input=document.createElement('input');input.id=id;input.type=type;input.placeholder=ph;
       input.style.cssText='background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:9px;padding:11px 12px;color:var(--text);font-size:13px;outline:none;width:100%';
-      if(type==='date') input.value=defVal||new Date().toISOString().split('T')[0];
-      if(type==='number'){ input.step='0.01'; if(defVal!=null&&defVal!=='')input.value=defVal; }
+      if(type==='date')input.value=new Date().toISOString().split('T')[0];
+      if(type==='number')input.step='0.01';
       wrap.appendChild(label);wrap.appendChild(input);return wrap;
     }
-    var isLongPos2 = LONG_TYPES.indexOf((trade.type||'').trim()) !== -1;
-    var closePremLabel2 = isLongPos2 ? 'Alınan Prim — Kapanış ($)' : 'Ödenen Prim — Kapanış ($)';
-    grow.appendChild(inp('td_date','date','','Kapanis Tarihi',''));
-    grow.appendChild(inp('td_pnl','number','250.50','P&L ($)',''));
-    sec.appendChild(grow);
+    var grow1=document.createElement('div');grow1.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px';
+    grow1.appendChild(mkInp('td_date','date','','Kapanış Tarihi'));grow1.appendChild(mkInp('td_pnl','number','250.50','P&L ($) — opsiyonel'));
     var grow2=document.createElement('div');grow2.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px';
-    grow2.appendChild(inp('td_cp','number','0.00',closePremLabel2,''));
-    grow2.appendChild(inp('td_kom_k','number','0.00','Komisyon — Kapanış ($)',''));
-    sec.appendChild(grow2);
-    sec.style.marginBottom='10px';
-
-    var closeBtn=document.createElement('button');
-    closeBtn.style.cssText='width:100%;margin-top:10px;background:linear-gradient(135deg,var(--profit),#0EA870);border:none;border-radius:12px;padding:14px;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer';
-    closeBtn.textContent='Pozisyonu Kapat';
+    grow2.appendChild(mkInp('td_cp','number','0.00',closePremLabel2));grow2.appendChild(mkInp('td_kom_k','number','0.00','Komisyon ($)'));
+    var qWrap=document.createElement('div');qWrap.style.cssText='margin-bottom:10px;display:none';
+    var qLbl=document.createElement('label');qLbl.style.cssText='font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px;display:block';qLbl.textContent='Kapatılan Kontrat (max '+remainingQ+')';
+    var qInp=document.createElement('input');qInp.id='td_qty';qInp.type='number';qInp.min='1';qInp.max=String(remainingQ);qInp.value='1';qInp.step='1';
+    qInp.style.cssText='background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:9px;padding:11px 12px;color:var(--text);font-size:13px;outline:none;width:100%';
+    qWrap.appendChild(qLbl);qWrap.appendChild(qInp);
+    sec.appendChild(grow1);sec.appendChild(grow2);sec.appendChild(qWrap);
+    var isPartialMode=false;
+    btnTam.onclick=function(){isPartialMode=false;btnTam.style.border='2px solid rgba(34,197,94,0.5)';btnKismi.style.border='1px solid rgba(245,158,11,0.3)';qWrap.style.display='none';closeBtn.textContent='✅ Pozisyonu Tam Kapat';closeBtn.style.background='linear-gradient(135deg,var(--profit),#0EA870)';};
+    btnKismi.onclick=function(){isPartialMode=true;btnKismi.style.border='2px solid rgba(245,158,11,0.6)';btnTam.style.border='1px solid rgba(34,197,94,0.2)';qWrap.style.display='block';closeBtn.textContent='⚡ Kısmen Kapat';closeBtn.style.background='linear-gradient(135deg,#F59E0B,#D97706)';};
+    var closeBtn=document.createElement('button');closeBtn.style.cssText='width:100%;margin-top:10px;background:linear-gradient(135deg,var(--profit),#0EA870);border:none;border-radius:12px;padding:14px;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer';closeBtn.textContent='✅ Pozisyonu Tam Kapat';
     closeBtn.onclick=function(){
       var d=document.getElementById('td_date').value;
       var pStr=document.getElementById('td_pnl').value;
       var cpVal=parseFloat(document.getElementById('td_cp').value);
       var komK=parseFloat(document.getElementById('td_kom_k').value)||0;
       if(!d){alert('Tarih gir');return;}
-
-      // P&L: önce girilen değer, yoksa kapanış priminden hesapla
       var p;
-      if(pStr!=='' && !isNaN(parseFloat(pStr))){
-        p=parseFloat(pStr);
-      } else if(!isNaN(cpVal) && cpVal>=0){
-        var _op=parseFloat(trade.openPremium)||parseFloat(trade.premium)||0;
-        var _ok=parseFloat(trade.openCommission)||0;
-        if(isLong(trade.type)){
-          p = cpVal - komK - _op - _ok;
-        } else {
-          p = _op - _ok - cpVal - komK;
-        }
-      } else {
-        alert('P&L veya Kapanış Primini gir');return;
-      }
-
+      if(pStr!==''&&!isNaN(parseFloat(pStr))){p=parseFloat(pStr);}
+      else if(!isNaN(cpVal)&&cpVal>=0){var _op=parseFloat(trade.openPremium)||parseFloat(trade.premium)||0;var _ok=parseFloat(trade.openCommission)||0;p=isLong(trade.type)?(cpVal-komK-_op-_ok):(_op-_ok-cpVal-komK);}
+      else{alert('P&L veya Kapanış Primini gir');return;}
       var months=Object.keys(tradesData);
-      for(var mi=0;mi<months.length;mi++){
-        var arr=tradesData[months[mi]];
-        for(var ti=0;ti<arr.length;ti++){
-          if(arr[ti].id==tradeId){
-            arr[ti].closed=d;
-            arr[ti].pnl=p;
-            arr[ti].pct=arr[ti].premium?p/Math.abs(arr[ti].premium):null;
-            if(!isNaN(cpVal)&&cpVal>=0) arr[ti].closePremium=cpVal;
-            if(komK>0) arr[ti].closeCommission=komK;
-            if(!taxData[tradeId]) taxData[tradeId]={};
-            if(komK>0) taxData[tradeId].komKapanis=komK;
-            saveTaxData();
-            break;
-          }
-        }
+      if(isPartialMode){
+        var qty=Math.min(parseInt(document.getElementById('td_qty').value)||1,remainingQ);
+        if(qty<1||qty>remainingQ){alert('Geçerli kontrat sayısı gir (1-'+remainingQ+')');return;}
+        var pcEntry={date:d,qty:qty,pnl:Math.round(p*100)/100,closePremium:!isNaN(cpVal)?Math.round(cpVal*100)/100:null,closeCommission:Math.round(komK*100)/100,acilis_kur:getKur(trade.opened)||0,kapanis_kur:getKur(d)||0};
+        for(var mi=0;mi<months.length;mi++){var arr=tradesData[months[mi]];for(var ti=0;ti<arr.length;ti++){if(arr[ti].id==tradeId){if(!arr[ti].partialCloses)arr[ti].partialCloses=[];arr[ti].partialCloses.push(pcEntry);var newCQ=arr[ti].partialCloses.reduce(function(s,x){return s+(x.qty||0);},0);if(newCQ>=(arr[ti].q||1)){var tPnl=arr[ti].partialCloses.reduce(function(s,x){return s+(x.pnl||0);},0);arr[ti].closed=d;arr[ti].pnl=Math.round(tPnl*100)/100;arr[ti].pct=arr[ti].premium?arr[ti].pnl/Math.abs(arr[ti].premium):null;}break;}}}
+      } else {
+        for(var mi2=0;mi2<months.length;mi2++){var arr2=tradesData[months[mi2]];for(var ti2=0;ti2<arr2.length;ti2++){if(arr2[ti2].id==tradeId){arr2[ti2].closed=d;arr2[ti2].pnl=Math.round(p*100)/100;arr2[ti2].pct=arr2[ti2].premium?arr2[ti2].pnl/Math.abs(arr2[ti2].premium):null;if(!isNaN(cpVal)&&cpVal>=0)arr2[ti2].closePremium=cpVal;if(komK>0)arr2[ti2].closeCommission=komK;if(!taxData[tradeId])taxData[tradeId]={};if(komK>0)taxData[tradeId].komKapanis=komK;saveTaxData();break;}}}
       }
-      saveData();ov.remove();
-      renderDashboard();renderTradeList(currentFilter);
-      if(typeof renderVergi==='function' && document.getElementById('screen-vergi') && document.getElementById('screen-vergi').classList.contains('active')) renderVergi();
+      saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
+      if(typeof renderVergi==='function'&&document.getElementById('screen-vergi')&&document.getElementById('screen-vergi').classList.contains('active'))renderVergi();
     };
-    sec.appendChild(closeBtn);
-    sh.appendChild(sec);
+    sec.appendChild(closeBtn);sh.appendChild(sec);
   }
 
   // Edit button — always visible (both open and closed)
@@ -2299,9 +2351,30 @@ function openTradeDetail(tradeId, month){
         tradesData[months[mi]]=tradesData[months[mi]].filter(function(t){return t.id!=tradeId;});
       }
       saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
+      if(typeof renderVergi==='function')renderVergi();
     };
     acts.appendChild(reopenBtn);acts.appendChild(delBtn);
     sh.appendChild(acts);
+  }
+
+  // Açık pozisyon için de sil butonu
+  if(isOpen){
+    var openDelDiv=document.createElement('div');
+    openDelDiv.style.cssText='margin-top:6px';
+    var openDelBtn=document.createElement('button');
+    openDelBtn.style.cssText='width:100%;background:var(--loss-dim);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:10px;color:var(--loss);font-family:var(--font-head);font-size:12px;font-weight:600;cursor:pointer';
+    openDelBtn.textContent='🗑 Pozisyonu Sil';
+    openDelBtn.onclick=function(){
+      if(!confirm('Bu pozisyonu silmek istiyor musun?'))return;
+      var months=Object.keys(tradesData);
+      for(var mi=0;mi<months.length;mi++){
+        tradesData[months[mi]]=tradesData[months[mi]].filter(function(t){return t.id!=tradeId;});
+      }
+      saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
+      if(typeof renderVergi==='function')renderVergi();
+    };
+    openDelDiv.appendChild(openDelBtn);
+    sh.appendChild(openDelDiv);
   }
 
   // Note section - always visible
