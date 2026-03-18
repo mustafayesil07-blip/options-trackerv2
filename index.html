@@ -707,6 +707,19 @@
       <div class="hero-val" id="heroOpen">—</div>
       <div class="hero-change" id="heroOpenSub"></div>
     </div>
+    <div class="hero-card" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(139,92,246,0.06));border-color:rgba(59,130,246,0.2);">
+      <div class="hero-label">Açık Pozisyon Primleri</div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div class="hero-val" id="heroOpenPrem" style="color:var(--info)">—</div>
+          <div class="hero-change" id="heroOpenPremSub" style="margin-top:6px;"></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:10px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">Toplam Prim</div>
+          <div class="hero-val" id="heroOpenPremTotal" style="font-size:20px;color:var(--purple)">—</div>
+        </div>
+      </div>
+    </div>
     <div class="hero-card" style="grid-column:1/-1;">
       <div class="hero-label">Collateral In Use</div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;">
@@ -1295,6 +1308,17 @@ function renderDashboard(){
   var dta=open.filter(function(t){var d=getDTE(t.expiry);return d!==null&&d<=7;}).length;
   var al=da+dta;
   el=document.getElementById('heroOpenSub'); if(el)el.innerHTML=al>0?'<span class="hero-badge warn">'+al+' alert'+(al>1?'s':'')+'</span>':'<span class="hero-badge info">healthy</span>';
+
+  // Açık pozisyon primleri
+  var openPremTotal = open.reduce(function(s,t){ return s + (parseFloat(t.openPremium)||parseFloat(t.premium)||0); }, 0);
+  var openKomTotal  = open.reduce(function(s,t){ return s + (parseFloat(t.openCommission)||0); }, 0);
+  var openPremNet   = openPremTotal - openKomTotal;
+  el=document.getElementById('heroOpenPrem');
+  if(el){ el.textContent=fmtA$(openPremTotal); el.style.color='var(--info)'; }
+  el=document.getElementById('heroOpenPremSub');
+  if(el) el.innerHTML='<span class="hero-badge info">'+open.length+' pozisyon</span>'+(openKomTotal>0?'<span style="color:var(--text-3);font-size:11px;margin-left:6px;">Kom: '+fmtA$(openKomTotal)+'</span>':'');
+  el=document.getElementById('heroOpenPremTotal');
+  if(el){ el.textContent=fmtA$(openPremNet); el.style.color=openPremNet>=0?'var(--profit)':'var(--loss)'; }
   el=document.getElementById('heroCollateral'); if(el)el.textContent=fmtA$(coll);
   el=document.getElementById('heroCollateralSub'); if(el)el.innerHTML='<span class="hero-badge '+(cp>0.6?'loss':cp>0.4?'warn':'info')+'">'+(cp*100).toFixed(0)+'% of $'+Math.round(PORT_SIZE/1000)+'K</span><span style="color:var(--text-3);font-size:11px;"> max 60%</span>';
   el=document.getElementById('heroCollPct'); if(el){el.textContent=(cp*100).toFixed(0)+'%';el.style.color=cp>0.6?'var(--loss)':cp>0.4?'var(--warn)':'var(--info)';}
