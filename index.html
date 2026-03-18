@@ -1613,13 +1613,25 @@ function showAddTrade(existingTrade){
       if(!ticker){alert('Ticker gerekli');return;}
       var month=sheet.querySelector('#nt_m').value;
       var pnlStr=sheet.querySelector('#nt_pnl').value;
-      var pnl=pnlStr===''?null:parseFloat(pnlStr);
       var openPrem=parseFloat(sheet.querySelector('#nt_p').value)||0;
-      var closePrem=sheet.querySelector('#nt_cp').value!==''?parseFloat(sheet.querySelector('#nt_cp').value):null;
+      var closePremRaw=sheet.querySelector('#nt_cp').value;
+      var closePrem=closePremRaw!==''?parseFloat(closePremRaw):null;
       var openKom=parseFloat(sheet.querySelector('#nt_kom_a').value)||0;
       var closeKom=sheet.querySelector('#nt_kom_k').value!==''?parseFloat(sheet.querySelector('#nt_kom_k').value):0;
       var qty=parseInt(sheet.querySelector('#nt_q').value)||1;
       var closedDate=sheet.querySelector('#nt_cd').value||null;
+      // PnL: önce girilen değer; yoksa kapanış priminden otomatik hesapla
+      var pnl;
+      if(pnlStr!==''){
+        pnl=parseFloat(pnlStr);
+      } else if(closePrem!=null && closedDate){
+        var _tradeType=sheet.querySelector('#nt_ty').value;
+        var _isLongType=(_tradeType==='LEAPS'||_tradeType==='Long Call');
+        pnl=_isLongType?(closePrem-closeKom-openPrem-openKom):(openPrem-openKom-closePrem-closeKom);
+        pnl=Math.round(pnl*100)/100;
+      } else {
+        pnl=null;
+      }
       if(pnl!==null&&!closedDate) closedDate=new Date().toISOString().split('T')[0];
 
       var trade={
