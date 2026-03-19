@@ -1101,6 +1101,22 @@ function showStatInfo(key){
   _ov.onclick = function(e){ if(e.target === _ov) _ov.remove(); };
 }
 
+function deleteTradeById(tradeId, closeOverlay){
+  var sid = String(tradeId);
+  markDeleted(sid);
+  var months = Object.keys(tradesData);
+  for(var mi=0; mi<months.length; mi++){
+    tradesData[months[mi]] = tradesData[months[mi]].filter(function(t){
+      return String(t.id) !== sid;
+    });
+  }
+  saveData();
+  if(closeOverlay) closeOverlay();
+  renderDashboard();
+  renderTradeList(currentFilter);
+  if(typeof renderVergi==='function') renderVergi();
+}
+
 function showDeleteConfirm(onConfirm){
   var _delOv=document.createElement('div');
   _delOv.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:24px';
@@ -1198,7 +1214,7 @@ var DELETED_IDS_LS = 'deleted_ids_v1';
 var deletedIds = [];
 try { var _di = localStorage.getItem(DELETED_IDS_LS); if(_di) deletedIds = JSON.parse(_di); } catch(e){}
 function saveDeletedIds(){ try { localStorage.setItem(DELETED_IDS_LS, JSON.stringify(deletedIds)); } catch(e){} }
-function markDeleted(id){ if(deletedIds.indexOf(id)<0){ deletedIds.push(id); saveDeletedIds(); } }
+function markDeleted(id){ var sid=String(id); if(deletedIds.map(String).indexOf(sid)<0){ deletedIds.push(sid); saveDeletedIds(); } }
 
 try {
   var _d = localStorage.getItem(LS);
@@ -1209,7 +1225,7 @@ try {
       if (!tradesData[m]) tradesData[m] = [];
       SEED[m].forEach(function(seedTrade) {
         // Silinmiş ise ekleme
-        if (deletedIds.indexOf(seedTrade.id) >= 0) return;
+        if (deletedIds.map(String).indexOf(String(seedTrade.id)) >= 0) return;
         if (!tradesData[m].find(function(x){return x.id===seedTrade.id;})) {
           tradesData[m].push(JSON.parse(JSON.stringify(seedTrade)));
         }
@@ -1600,7 +1616,7 @@ function renderTradeList(filter, month){
   var listEl=document.getElementById('tradeList'); if(!listEl)return;
   listEl.onclick=function(e){
     var card=e.target.closest('[data-tid]');
-    if(card) openTradeDetail(parseInt(card.dataset.tid), card.dataset.tmonth);
+    if(card) openTradeDetail(card.dataset.tid, card.dataset.tmonth);
   };
   if(!f.length){listEl.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div>No trades found</div>';return;}
   listEl.innerHTML=f.map(function(t){
@@ -2467,7 +2483,7 @@ function showAddLeap(existingLeap){
 // TRADE DETAIL
 function openTradeDetail(tradeId, month){
   var trade=null;
-  getAllTrades().forEach(function(t){if(t.id==tradeId)trade=t;});
+  getAllTrades().forEach(function(t){if(String(t.id)===String(tradeId))trade=t;});
   if(!trade)return;
   var isOpen=!trade.closed;
   var tc=tcol(trade.ticker.split(' ')[0]);
@@ -2699,13 +2715,13 @@ function openTradeDetail(tradeId, month){
         var qty=closingQty;
         if(qty<1||qty>remainingQ){alert('Geçerli kontrat sayısı gir (1-'+remainingQ+')');return;}
         var pcEntry={date:d,qty:qty,pnl:p,closePremium:!isNaN(cpVal)?Math.round(cpVal*100)/100:null,closeCommission:Math.round(komK*100)/100,acilis_kur:getKur(trade.opened)||0,kapanis_kur:getKur(d)||0};
-        for(var mi=0;mi<months.length;mi++){var arr=tradesData[months[mi]];for(var ti=0;ti<arr.length;ti++){if(arr[ti].id==tradeId){if(!arr[ti].partialCloses)arr[ti].partialCloses=[];arr[ti].partialCloses.push(pcEntry);var newCQ=arr[ti].partialCloses.reduce(function(s,x){return s+(x.qty||0);},0);if(newCQ>=(arr[ti].q||1)){var _op2=parseFloat(arr[ti].openPremium)||parseFloat(arr[ti].premium)||0;var _ok2=parseFloat(arr[ti].openCommission)||0;var _sumClose=arr[ti].partialCloses.reduce(function(s,x){return s+(x.closePremium||0);},0);var _sumKom=arr[ti].partialCloses.reduce(function(s,x){return s+(x.closeCommission||0);},0);var tPnl=isLong(arr[ti].type)?(_sumClose-_sumKom-_op2-_ok2):(_op2-_ok2-_sumClose-_sumKom);arr[ti].closed=d;arr[ti].pnl=Math.round(tPnl*100)/100;arr[ti].pct=arr[ti].premium?arr[ti].pnl/Math.abs(arr[ti].premium):null;}break;}}}
+        for(var mi=0;mi<months.length;mi++){var arr=tradesData[months[mi]];for(var ti=0;ti<arr.length;ti++){if(String(arr[ti].id)===String(tradeId)){if(!arr[ti].partialCloses)arr[ti].partialCloses=[];arr[ti].partialCloses.push(pcEntry);var newCQ=arr[ti].partialCloses.reduce(function(s,x){return s+(x.qty||0);},0);if(newCQ>=(arr[ti].q||1)){var _op2=parseFloat(arr[ti].openPremium)||parseFloat(arr[ti].premium)||0;var _ok2=parseFloat(arr[ti].openCommission)||0;var _sumClose=arr[ti].partialCloses.reduce(function(s,x){return s+(x.closePremium||0);},0);var _sumKom=arr[ti].partialCloses.reduce(function(s,x){return s+(x.closeCommission||0);},0);var tPnl=isLong(arr[ti].type)?(_sumClose-_sumKom-_op2-_ok2):(_op2-_ok2-_sumClose-_sumKom);arr[ti].closed=d;arr[ti].pnl=Math.round(tPnl*100)/100;arr[ti].pct=arr[ti].premium?arr[ti].pnl/Math.abs(arr[ti].premium):null;}break;}}}
       } else {
         // TAM KAPAT: Son kapanışı partialCloses'a ekle
         for(var mi2=0;mi2<months.length;mi2++){
           var arr2=tradesData[months[mi2]];
           for(var ti2=0;ti2<arr2.length;ti2++){
-            if(arr2[ti2].id==tradeId){
+            if(String(arr2[ti2].id)===String(tradeId)){
               var _t=arr2[ti2];
               var _alreadyClosed=(_t.partialCloses||[]).reduce(function(s,x){return s+(x.qty||0);},0);
               var _lastQty=(_t.q||1)-_alreadyClosed;
@@ -2760,7 +2776,7 @@ function openTradeDetail(tradeId, month){
     for(var mi=0;mi<months.length;mi++){
       var arr=tradesData[months[mi]];
       for(var ti=0;ti<arr.length;ti++){
-        if(arr[ti].id==tradeId){ foundTrade=arr[ti]; foundTrade.month=months[mi]; foundMonth=months[mi]; break; }
+        if(String(arr[ti].id)===String(tradeId)){ foundTrade=arr[ti]; foundTrade.month=months[mi]; foundMonth=months[mi]; break; }
       }
       if(foundTrade) break;
     }
@@ -2780,7 +2796,7 @@ function openTradeDetail(tradeId, month){
       for(var mi=0;mi<months.length;mi++){
         var arr=tradesData[months[mi]];
         for(var ti=0;ti<arr.length;ti++){
-          if(arr[ti].id==tradeId){arr[ti].closed=null;arr[ti].pnl=null;arr[ti].pct=null;arr[ti].partialCloses=[];arr[ti].closePremium=null;arr[ti].closeCommission=null;break;}
+          if(String(arr[ti].id)===String(tradeId)){arr[ti].closed=null;arr[ti].pnl=null;arr[ti].pct=null;arr[ti].partialCloses=[];arr[ti].closePremium=null;arr[ti].closeCommission=null;break;}
         }
       }
       saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
@@ -2790,15 +2806,7 @@ function openTradeDetail(tradeId, month){
     delBtn.style.cssText='flex:1;background:var(--loss-dim);border:1px solid rgba(239,68,68,.25);border-radius:12px;padding:12px;color:var(--loss);font-family:var(--font-head);font-size:13px;font-weight:600;cursor:pointer';
     delBtn.textContent='Sil';
     delBtn.onclick=function(){
-      showDeleteConfirm(function(){
-        markDeleted(tradeId);
-        var months=Object.keys(tradesData);
-        for(var mi=0;mi<months.length;mi++){
-          tradesData[months[mi]]=tradesData[months[mi]].filter(function(t){return t.id!=tradeId;});
-        }
-        saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
-        if(typeof renderVergi==='function')renderVergi();
-      });
+      showDeleteConfirm(function(){ deleteTradeById(tradeId, function(){ ov.remove(); }); });
     };
     acts.appendChild(reopenBtn);acts.appendChild(delBtn);
     sh.appendChild(acts);
@@ -2812,15 +2820,7 @@ function openTradeDetail(tradeId, month){
     openDelBtn.style.cssText='width:100%;background:var(--loss-dim);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:10px;color:var(--loss);font-family:var(--font-head);font-size:12px;font-weight:600;cursor:pointer';
     openDelBtn.textContent='🗑 Pozisyonu Sil';
     openDelBtn.onclick=function(){
-      showDeleteConfirm(function(){
-        markDeleted(tradeId);
-        var months=Object.keys(tradesData);
-        for(var mi=0;mi<months.length;mi++){
-          tradesData[months[mi]]=tradesData[months[mi]].filter(function(t){return t.id!=tradeId;});
-        }
-        saveData();ov.remove();renderDashboard();renderTradeList(currentFilter);
-        if(typeof renderVergi==='function')renderVergi();
-      });
+      showDeleteConfirm(function(){ deleteTradeById(tradeId, function(){ ov.remove(); }); });
     };
     openDelDiv.appendChild(openDelBtn);
     sh.appendChild(openDelDiv);
@@ -2847,7 +2847,7 @@ function openTradeDetail(tradeId, month){
     for(var mi=0;mi<months.length;mi++){
       var arr=tradesData[months[mi]];
       for(var ti=0;ti<arr.length;ti++){
-        if(arr[ti].id==tradeId){arr[ti].note=note;break;}
+        if(String(arr[ti].id)===String(tradeId)){arr[ti].note=note;break;}
       }
     }
     saveData();
