@@ -1016,6 +1016,91 @@
 
 <script>
 // ─── Delete confirm helper ───────────────────────────────
+function showStatInfo(key){
+  var INFO = {
+    "Avg Win": {
+      title: "Ortalama Kazanc (Avg Win)",
+      desc: "Karli kapanan tum islemlerin ortalama kazanci. Tum winning trade'lerin P&L toplaminin kazanc sayisina bolunmesiyle hesaplanir.",
+      tip: "Yuksek olmasi iyidir. Avg Loss ile birlikte degerlendirin — Avg Win, Avg Loss'tan buyuk olursa payoff ratio 1'in uzerinde olur ve daha az trade ile karlilik saglanir."
+    },
+    "Avg Loss": {
+      title: "Ortalama Kayip (Avg Loss)",
+      desc: "Zararli kapanan tum islemlerin ortalama kaybi. Tum losing trade'lerin P&L mutlak degerinin kayip sayisina bolunmesiyle bulunur.",
+      tip: "Dusuk olmasi iyidir. Kayiplari kucuk tutmak sistemin en onemli disiplinlerinden biridir. Buyuk kayiplar toplam karliligi ciddi sekilde olumsuz etkiler."
+    },
+    "Payoff R": {
+      title: "Kazanc/Kayip Orani (Payoff Ratio)",
+      desc: "Avg Win / Avg Loss. Ortalama bir kazancin, ortalama bir kayba oranini gosterir.",
+      tip: "Opsiyon saticilarinda genellikle 1'in altindadir — bu normaldir cunku yuksek win rate bunu telafi eder. Ornegin %80 win rate ile 0.5 payoff ratio hala cok karlidir."
+    },
+    "P Factor": {
+      title: "Kar Faktoru (Profit Factor)",
+      desc: "Toplam kazanc / Toplam kayip. Sistemin bir butun olarak ne kadar verimli oldugunun en onemli gostergesidir.",
+      tip: "2.0 ve uzeri mukemmel, 1.5+ iyi, 1.0-1.5 arasi kabul edilebilir, 1.0 altinda sistem para kaybediyor demektir. Hedef: 1.5 ve uzeri."
+    },
+    "EV/Trade": {
+      title: "Beklenen Deger / Trade (EV/Trade)",
+      desc: "Toplam P&L / Trade sayisi. Her bir islemden ortalama olarak ne kadar kazanildigini gosterir.",
+      tip: "Pozitif olmali. Ne kadar yuksekse her trade o kadar degerlidir. Bu rakam negatifse, daha fazla islem yapmaniz kaybi buyutecektir."
+    },
+    "Trades": {
+      title: "Islem Sayisi",
+      desc: "Secili donemde tamamen kapatilan toplam islem sayisi.",
+      tip: "Istatistiklerin istatistiksel olarak anlamli olmasi icin en az 20-30 islem onerilir. Az sayida islemde win rate ve profit factor cok oynak olup yaniltici sonuclar verebilir."
+    }
+  };
+  var key2 = key.indexOf('Trades') === 0 ? 'Trades' : key;
+  var info = INFO[key2] || INFO['Trades'];
+
+  var _ov = document.createElement('div');
+  _ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:center';
+
+  var _sh = document.createElement('div');
+  _sh.style.cssText = 'width:100%;max-width:480px;background:#453C36;border-radius:20px 20px 0 0;border-top:1px solid rgba(255,255,255,.12);padding:20px 22px 40px;animation:slideUp .25s cubic-bezier(.16,1,.3,1)';
+
+  var _hdl = document.createElement('div');
+  _hdl.style.cssText = 'width:32px;height:3px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 18px';
+
+  var _ttl = document.createElement('div');
+  _ttl.style.cssText = 'font-family:var(--font-head);font-size:17px;font-weight:700;color:var(--text);margin-bottom:4px';
+  _ttl.textContent = info.title;
+
+  var _div = document.createElement('div');
+  _div.style.cssText = 'height:1px;background:rgba(255,255,255,.08);margin:14px 0';
+
+  var _dl = document.createElement('div');
+  _dl.style.cssText = 'font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:7px';
+  _dl.textContent = 'Ne anlama gelir?';
+
+  var _desc = document.createElement('div');
+  _desc.style.cssText = 'font-size:14px;color:var(--text-2);line-height:1.65;margin-bottom:16px';
+  _desc.textContent = info.desc;
+
+  var _tb = document.createElement('div');
+  _tb.style.cssText = 'background:rgba(59,130,246,0.09);border:1px solid rgba(59,130,246,.22);border-radius:12px;padding:13px 15px';
+
+  var _tl = document.createElement('div');
+  _tl.style.cssText = 'font-size:10px;color:var(--info);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:7px';
+  _tl.textContent = 'Nasil yorumlanir?';
+
+  var _tip = document.createElement('div');
+  _tip.style.cssText = 'font-size:13px;color:var(--text-2);line-height:1.65';
+  _tip.textContent = info.tip;
+
+  _tb.appendChild(_tl); _tb.appendChild(_tip);
+
+  var _btn = document.createElement('button');
+  _btn.style.cssText = 'width:100%;margin-top:18px;padding:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;color:var(--text-2);font-size:14px;cursor:pointer;font-family:inherit;font-weight:500';
+  _btn.textContent = 'Tamam';
+  _btn.onclick = function(){ _ov.remove(); };
+
+  _sh.appendChild(_hdl); _sh.appendChild(_ttl); _sh.appendChild(_div);
+  _sh.appendChild(_dl); _sh.appendChild(_desc); _sh.appendChild(_tb); _sh.appendChild(_btn);
+  _ov.appendChild(_sh);
+  document.body.appendChild(_ov);
+  _ov.onclick = function(e){ if(e.target === _ov) _ov.remove(); };
+}
+
 function showDeleteConfirm(onConfirm){
   var _delOv=document.createElement('div');
   _delOv.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:24px';
@@ -1472,7 +1557,13 @@ function renderDashboard(){
     {v:stats.profitFactor.toFixed(2),l:'P Factor',c:'var(--warn)'},
     {v:fmt$(stats.ev),l:'EV/Trade',c:'var(--text)'},
     {v:stats.total,l:month==='all'?'Trades':'Trades ('+month+')',c:'var(--info)'}
-  ].map(function(x){return'<div class="stat-cell"><div class="stat-cell-val" style="color:'+x.c+'">'+x.v+'</div><div class="stat-cell-lbl">'+x.l+'</div></div>';}).join('');
+  ].map(function(x){
+    var _k=x.l.indexOf('Trades')===0?'Trades':x.l;
+    return '<div class="stat-cell" onclick="showStatInfo(&quot;'+_k+'&quot;)" style="cursor:pointer;-webkit-user-select:none;user-select:none">'+
+      '<div class="stat-cell-val" style="color:'+x.c+'">'+x.v+'</div>'+
+      '<div class="stat-cell-lbl">'+x.l+' <span style="font-size:9px;opacity:0.4;vertical-align:middle">&#x24D8;</span></div>'+
+    '</div>';
+  }).join('');
 
   el=document.getElementById('recentTrades');
   if(el){
