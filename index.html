@@ -786,7 +786,13 @@
 <div class="screen" id="screen-trades">
   <div class="section-head">
     <div><div class="section-title">Trades</div><div class="section-sub" id="tradesSub">Loading...</div></div>
-    <div class="section-action" onclick="showAddTrade()">+ New</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:8px;padding:2px;gap:2px;">
+        <button id="viewCards" onclick="setTradeView('cards')" style="padding:5px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;background:rgba(255,255,255,0.12);color:var(--text);font-family:inherit">⊞</button>
+        <button id="viewList"  onclick="setTradeView('list')"  style="padding:5px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:var(--text-3);font-family:inherit">☰</button>
+      </div>
+      <div class="section-action" onclick="showAddTrade()">+ New</div>
+    </div>
   </div>
   <div class="filter-row" id="typeFilterRow">
     <div class="filter-pill active" data-filter="all">All</div>
@@ -861,21 +867,9 @@
   <div class="section-head">
     <div><div class="section-title">Reports</div><div class="section-sub">Performance history</div></div>
   </div>
-  <!-- Veri Güvenliği Kartı -->
-  <div style="margin:0 20px 14px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:14px;padding:14px 16px;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:16px;">🛡️</span>
-      <span style="font-family:var(--font-head);font-size:13px;font-weight:700;color:var(--warn);">Veri Güvenliği</span>
-    </div>
-    <div style="font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:10px;">
-      Verileriniz tarayıcının hafızasında (localStorage) saklanıyor. Tarayıcı cache'i temizlenirse veya uygulama silinirse verileriniz kaybolabilir.
-      <strong style="color:var(--warn)"> Düzenli yedek almanız önerilir.</strong>
-    </div>
-    <div style="font-size:11px;color:var(--text-3)" id="lastBackupInfo">Son yedek: hiç alınmadı</div>
-  </div>
   <div style="display:flex;gap:10px;margin:0 20px 16px;flex-wrap:wrap;">
-    <button onclick="exportData()" style="flex:1;min-width:140px;background:var(--purple-dim);border:1px solid rgba(139,92,246,.3);border-radius:12px;padding:14px;color:var(--purple);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">📤 Yedek Al (Export)</button>
-    <button onclick="importData()" style="flex:1;min-width:140px;background:var(--info-dim);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:14px;color:var(--info);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">📥 Yedek Yükle (Import)</button>
+    <button onclick="exportData()" style="flex:1;min-width:140px;background:var(--purple-dim);border:1px solid rgba(139,92,246,.3);border-radius:12px;padding:14px;color:var(--purple);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">📤 Export Backup</button>
+    <button onclick="importData()" style="flex:1;min-width:140px;background:var(--info-dim);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:14px;color:var(--info);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">📥 Import JSON</button>
   </div>
   <div class="monthly-table">
     <div style="font-family:var(--font-head);font-size:14px;font-weight:600;margin-bottom:10px;padding:0 2px;">Monthly Breakdown</div>
@@ -1248,29 +1242,11 @@ try {
     try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e2){}
   }
 } catch(e) {
-  // Ana key okunamadı — shadow key'den kurtar
-  try {
-    var _shadow = localStorage.getItem('opt_v22_shadow');
-    if(_shadow) {
-      tradesData = JSON.parse(_shadow);
-      console.warn('Restored from shadow key');
-    } else {
-      tradesData = JSON.parse(JSON.stringify(SEED));
-    }
-  } catch(e2) {
-    tradesData = JSON.parse(JSON.stringify(SEED));
-  }
+  tradesData = JSON.parse(JSON.stringify(SEED));
 }
 try { var _l = localStorage.getItem(LEAPS_LS); leapsData = _l ? JSON.parse(_l) : []; } catch(e) { leapsData = []; }
 
-function saveData() {
-  try {
-    var json=JSON.stringify(tradesData);
-    localStorage.setItem(LS, json);
-    // Her kayıtta ikinci key'e de yaz (ek güvenlik)
-    try{ localStorage.setItem('opt_v22_shadow', json); }catch(e2){}
-  } catch(e){}
-}
+function saveData() { try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e){} }
 function saveLeaps() { try { localStorage.setItem(LEAPS_LS, JSON.stringify(leapsData)); } catch(e){} }
 
 // ── Helpers ──────────────────────────────────────────
@@ -1629,6 +1605,24 @@ function renderDashboard(){
 // ═══════════════════ TRADES ═══════════════════
 var currentFilter='all';
 var currentMonthFilter='all';
+var currentTradeView = 'cards'; // 'cards' | 'list'
+
+function setTradeView(v){
+  currentTradeView = v;
+  var btnCards = document.getElementById('viewCards');
+  var btnList  = document.getElementById('viewList');
+  if(btnCards && btnList){
+    if(v === 'cards'){
+      btnCards.style.background='rgba(255,255,255,0.12)'; btnCards.style.color='var(--text)';
+      btnList.style.background='transparent'; btnList.style.color='var(--text-3)';
+    } else {
+      btnList.style.background='rgba(255,255,255,0.12)'; btnList.style.color='var(--text)';
+      btnCards.style.background='transparent'; btnCards.style.color='var(--text-3)';
+    }
+  }
+  renderTradeList();
+}
+
 function renderTradeList(filter, month){
   if(filter !== undefined) currentFilter = filter || 'all';
   if(month !== undefined) currentMonthFilter = month || 'all';
@@ -1640,7 +1634,22 @@ function renderTradeList(filter, month){
   if(currentMonthFilter && currentMonthFilter!=='all'){
     f=f.filter(function(t){return t.month===currentMonthFilter;});
   }
-  f.sort(function(a,b){if(!a.closed&&b.closed)return-1;if(a.closed&&!b.closed)return 1;return new Date(b.opened)-new Date(a.opened);});
+  if(currentTradeView === 'list'){
+    if(currentFilter === 'open'){
+      // Açık: vadesi en yakın en üstte
+      f.sort(function(a,b){
+        var da = a.expiry ? new Date(a.expiry) : new Date('9999-12-31');
+        var db = b.expiry ? new Date(b.expiry) : new Date('9999-12-31');
+        return da - db;
+      });
+    } else {
+      // Closed / All / tür filtresi: en son açılan en üstte
+      f.sort(function(a,b){ return new Date(b.opened) - new Date(a.opened); });
+    }
+  } else {
+    // Kart view: açık önce, sonra tarih azalan
+    f.sort(function(a,b){if(!a.closed&&b.closed)return-1;if(a.closed&&!b.closed)return 1;return new Date(b.opened)-new Date(a.opened);});
+  }
   var oc=all.filter(function(t){return!t.closed;}).length; var cc=all.filter(function(t){return!!t.closed;}).length;
   var sub=document.getElementById('tradesSub'); if(sub)sub.textContent=all.length+' total · '+oc+' open · '+cc+' closed';
   var listEl=document.getElementById('tradeList'); if(!listEl)return;
@@ -1649,6 +1658,67 @@ function renderTradeList(filter, month){
     if(card) openTradeDetail(card.dataset.tid, card.dataset.tmonth);
   };
   if(!f.length){listEl.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div>No trades found</div>';return;}
+
+  // ── Liste view ──
+  if(currentTradeView === 'list'){
+    listEl.style.overflowX = '';
+    listEl.innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;">' +
+      '<table style="width:100%;min-width:520px;border-collapse:collapse;font-size:12px;">' +
+      '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">' +
+        '<th style="text-align:left;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Ticker</th>' +
+        '<th style="text-align:left;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Tür</th>' +
+        '<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Strike</th>' +
+        '<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Vade</th>' +
+        '<th style="text-align:center;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Qty</th>'+'<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Prim</th>' +
+        '<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">P&L</th>' +
+        '<th style="text-align:center;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">DTE</th>' +
+        '<th style="text-align:center;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Durum</th>' +
+      '</tr></thead><tbody>' +
+      f.map(function(t){
+        var isOpen=!t.closed;
+        var dte=getDTE(t.expiry);
+        var dteColor=dte===null?'var(--text-3)':dte<=7?'var(--loss)':dte<=14?'var(--warn)':'var(--info)';
+        var _pcs=t.partialCloses||[];
+        var displayPnl=t.pnl;
+        if(_pcs.length>0){
+          var _op=parseFloat(t.openPremium)||parseFloat(t.premium)||0;
+          var _ok=parseFloat(t.openCommission)||0;
+          var _sCP=_pcs.reduce(function(s,x){return s+(x.closePremium||0);},0);
+          var _sCK=_pcs.reduce(function(s,x){return s+(x.closeCommission||0);},0);
+          displayPnl=Math.round((isLong(t.type)?(_sCP-_sCK-_op-_ok):(_op-_ok-_sCP-_sCK))*100)/100;
+        }
+        var _partlyOpen=isPartlyOpen(t);
+        var _remainingQty=getRemainingQty(t);
+        var shownPnl=isOpen?(_partlyOpen?displayPnl:null):displayPnl;
+        var pnlColor=shownPnl==null?'var(--text-3)':shownPnl>=0?'var(--profit)':'var(--loss)';
+        var isAlert=isOpen&&((t.delta&&t.delta>35)||(dte!==null&&dte<=7));
+        var statusTxt=isAlert?'⚠️':(!isOpen?'●':(_partlyOpen?'◑':'●'));
+        var statusColor=isOpen?(_partlyOpen?'var(--warn)':(isAlert?'var(--loss)':'var(--profit)')):'var(--text-3)';
+        var rowBg=isAlert?'rgba(239,68,68,0.05)':'';
+        var tc=tcol(t.ticker.split(' ')[0]);
+        var tagC={'CSP':'#22c55e','CC':'#3b82f6','PCS':'#f59e0b','PMCC':'#a78bfa','IC':'#8b5cf6','LEAPS':'#10b981','Long Call':'#ef4444','HEDGE':'#64748b'};
+        var typeColor=tagC[t.type]||'#94a3b8';
+        return '<tr data-tid="'+t.id+'" data-tmonth="'+t.month+'" style="border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;background:'+rowBg+'" '+
+          'onclick="openTradeDetail(this.dataset.tid,this.dataset.tmonth)">' +
+          '<td style="padding:9px 8px;white-space:nowrap;">' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+              '<div style="width:24px;height:24px;border-radius:6px;background:'+tc.bg+';color:'+tc.color+';font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+t.ticker.split(' ')[0].slice(0,4)+'</div>'+
+              '<span style="font-weight:600;color:var(--text);font-size:12px;">'+t.ticker.split(' ')[0]+'</span>'+
+            '</div></td>'+
+          '<td style="padding:9px 8px;white-space:nowrap;"><span style="background:'+typeColor+'22;color:'+typeColor+';border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700">'+t.type+'</span></td>'+
+          '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text);white-space:nowrap">$'+t.strike+'</td>'+
+          '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text-2);font-size:11px;white-space:nowrap">'+fmtExpiry(t.expiry)+'</td>'+
+          '<td style="padding:9px 8px;text-align:center;font-family:var(--font-mono);color:var(--text-2);white-space:nowrap">'+(_partlyOpen?(_remainingQty+'/'+t.q):t.q)+'</td>'+
+          '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text);white-space:nowrap">'+fmtA$(parseFloat(t.openPremium)||parseFloat(t.premium)||0)+'</td>'+
+          '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);font-weight:700;color:'+pnlColor+';white-space:nowrap">'+(shownPnl!=null?(shownPnl>=0?'+':'')+shownPnl.toFixed(2):'—')+'</td>'+
+          '<td style="padding:9px 8px;text-align:center;font-family:var(--font-mono);color:'+dteColor+';white-space:nowrap">'+(dte!==null?dte:'—')+'</td>'+
+          '<td style="padding:9px 8px;text-align:center;color:'+statusColor+';white-space:nowrap">'+statusTxt+'</td>'+
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+    return;
+  }
+
   listEl.innerHTML=f.map(function(t){
     var isOpen=!t.closed; var dte=getDTE(t.expiry);
     var dc=dte===null?'var(--text-3)':dte<=7?'var(--loss)':dte<=14?'var(--warn)':'var(--info)';
@@ -1812,21 +1882,6 @@ function renderRisk(){
 
 // ═══════════════════ REPORTS ═══════════════════
 function renderReports(){
-  // Son yedek tarihini göster
-  var el=document.getElementById('lastBackupInfo');
-  if(el){
-    try{
-      var lb=localStorage.getItem('lastBackup');
-      if(lb){
-        var d=new Date(lb);
-        var diffDays=Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
-        var dateStr=d.toISOString().split('T')[0];
-        var color=diffDays>7?'var(--warn)':diffDays>3?'var(--info)':'var(--profit)';
-        el.innerHTML='Son yedek: <span style="color:'+color+';font-weight:600">'+dateStr+'</span>'+(diffDays===0?' (bugün)':' ('+diffDays+' gün önce)')+(diffDays>7?' ⚠️ Yedek almanız önerilir':'');
-      }
-    }catch(e){}
-  }
-
   var m=getMonthlyStats(); var tot={t:0,pnl:0};
   var rows=m.map(function(x){tot.t+=x.trades;tot.pnl+=x.pnl;var wc=x.wr>=.7?'var(--profit)':x.wr>=.5?'var(--warn)':'var(--loss)';return'<div class="monthly-row"><div class="month">'+x.month+'</div><div class="trades" style="font-family:var(--font-mono);">'+x.trades+'</div><div class="wr" style="font-family:var(--font-mono);color:'+wc+';">'+Math.round(x.wr*100)+'%</div><div class="pnl" style="font-family:var(--font-mono);color:'+(x.pnl>=0?'var(--profit)':'var(--loss)')+';">'+fmt$(x.pnl)+'</div></div>';}).reverse().join('');
   var as=calcStats();
@@ -1836,113 +1891,27 @@ function renderReports(){
 
 // ═══════════════════ EXPORT / IMPORT ═══════════════════
 function exportData(){
-  var json=JSON.stringify(tradesData,null,2);
-  var blob=new Blob([json],{type:'application/json'});
+  var blob=new Blob([JSON.stringify(tradesData,null,2)],{type:'application/json'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  var dateStr=new Date().toISOString().split('T')[0];
-  a.download='optionflow-backup-'+dateStr+'.json'; a.click();
-  // Son yedek tarihini kaydet
-  try{ localStorage.setItem('lastBackup', new Date().toISOString()); }catch(e){}
-  // İkinci key'e de yedekle (güvenlik için)
-  try{ localStorage.setItem('opt_v22_backup', json); }catch(e){}
-  // UI güncelle
-  var el=document.getElementById('lastBackupInfo');
-  if(el) el.textContent='Son yedek: '+dateStr+' ✅';
-  // Toast
-  var t=document.createElement('div');
-  t.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#22C55E;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:99999;white-space:nowrap';
-  t.textContent='✅ Yedek indirildi — '+dateStr;
-  document.body.appendChild(t);
-  setTimeout(function(){t.remove();},3000);
+  a.download='optionflow-backup-'+new Date().toISOString().split('T')[0]+'.json'; a.click();
 }
 function importData(){
   var m=document.createElement('div');
-  m.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
-
-  var sheet=document.createElement('div');
-  sheet.style.cssText='width:100%;max-width:500px;background:#453C36;border-radius:20px 20px 0 0;border-top:1px solid rgba(255,255,255,.12);padding:20px 20px 40px;max-height:85vh;overflow-y:auto;';
-
-  var handle=document.createElement('div');
-  handle.style.cssText='width:32px;height:3px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 18px';
-
-  var title=document.createElement('div');
-  title.style.cssText='font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)';
-  title.textContent='📥 Yedek Yükle (Import)';
-
-  var desc=document.createElement('div');
-  desc.style.cssText='font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.5';
-  desc.textContent='Export ile aldığın JSON dosyasını seç veya içeriğini yapıştır. Mevcut veriler yeni veriyle değiştirilecek.';
-
-  // Dosya seçici
-  var fileBtn=document.createElement('button');
-  fileBtn.style.cssText='width:100%;padding:12px;background:rgba(59,130,246,0.12);border:1px dashed rgba(59,130,246,0.4);border-radius:10px;color:var(--info);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px';
-  fileBtn.textContent='📂 JSON Dosyası Seç';
-
-  var fileInp=document.createElement('input');
-  fileInp.type='file'; fileInp.accept='.json';
-  fileInp.style.cssText='display:none';
-
-  var ta=document.createElement('textarea');
-  ta.placeholder='veya JSON içeriğini buraya yapıştır...';
-  ta.style.cssText='width:100%;height:120px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px;color:var(--text);font-size:12px;font-family:var(--font-mono);outline:none;resize:none;margin-bottom:14px;-webkit-appearance:none';
-
-  fileInp.onchange=function(e){
-    var file=e.target.files[0]; if(!file) return;
-    fileBtn.textContent='📄 '+file.name;
-    fileBtn.style.borderColor='rgba(34,197,94,0.5)';
-    fileBtn.style.color='var(--profit)';
-    var reader=new FileReader();
-    reader.onload=function(ev){ ta.value=ev.target.result; };
-    reader.readAsText(file);
-  };
-  fileBtn.onclick=function(){ fileInp.click(); };
-
-  var btnRow=document.createElement('div');
-  btnRow.style.cssText='display:flex;gap:10px';
-
-  var cancelBtn=document.createElement('button');
-  cancelBtn.style.cssText='flex:1;padding:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--text-2);font-size:14px;cursor:pointer;font-family:inherit';
-  cancelBtn.textContent='İptal';
-  cancelBtn.onclick=function(){m.remove();};
-
-  var saveBtn=document.createElement('button');
-  saveBtn.style.cssText='flex:2;padding:13px;background:var(--info);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit';
-  saveBtn.textContent='✅ Yükle';
-  saveBtn.onclick=function(){
-    try{
-      var raw=ta.value.trim();
-      if(!raw){alert('Dosya seç veya JSON yapıştır');return;}
-      var d=JSON.parse(raw);
-      if(typeof d!=='object'||Array.isArray(d)){alert('Geçersiz format. {Ay:[...]} yapısında JSON gerekli.');return;}
-      tradesData=d;
-      saveData();
-      try{ localStorage.setItem('opt_v22_backup', JSON.stringify(d)); }catch(e2){}
-      if(typeof deletedIds!=='undefined'){ deletedIds=[]; saveDeletedIds(); }
-      m.remove();
-      renderDashboard(); renderTradeList('all');
-      if(typeof renderPlannedList==='function') renderPlannedList();
-      if(typeof renderVergi==='function') renderVergi();
-      var total=getAllTrades().length;
-      var months=Object.keys(d).length;
-      var t=document.createElement('div');
-      t.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#22C55E;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:99999;white-space:nowrap';
-      t.textContent='✅ '+months+' ay, '+total+' trade yüklendi';
-      document.body.appendChild(t);
-      setTimeout(function(){t.remove();},3000);
-    }catch(e){
-      alert('Geçersiz JSON. Hata: '+e.message);
-    }
-  };
-
-  btnRow.appendChild(cancelBtn); btnRow.appendChild(saveBtn);
-  sheet.appendChild(handle); sheet.appendChild(title); sheet.appendChild(desc);
-  sheet.appendChild(fileBtn); sheet.appendChild(fileInp);
-  sheet.appendChild(ta); sheet.appendChild(btnRow);
-  m.appendChild(sheet);
+  m.style.cssText='position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
+  m.innerHTML='<div style="width:100%;max-width:500px;background:#1a2234;border-radius:20px 20px 0 0;border-top:1px solid rgba(255,255,255,.1);padding:20px 20px 36px;max-height:88vh;overflow-y:auto;">'+'<div style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 20px;"></div>'+'<div style="font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:20px;">'+(existingLeap?'LEAPS Düzenle':'LEAPS Pozisyonu Ekle')+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Ticker</div><input id="lf_t" placeholder="NVDA" autocapitalize="characters" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Yön</div><select id="lf_d" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"><option>Call</option><option>Put</option></select></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Strike ($)</div><input id="lf_s" type="number" placeholder="45" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Vade (Expiry)</div><input id="lf_e" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Alış Tarihi</div><input id="lf_opened" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Alış Fiyatı ($)</div><input id="lf_c" type="number" placeholder="4.50" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Güncel Fiyat ($)</div><input id="lf_cur" type="number" placeholder="5.20" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Hedef Fiyat ($)</div><input id="lf_tg" type="number" placeholder="10.00" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="margin-bottom:12px"><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Kontrat Sayısı</div><input id="lf_q" type="number" placeholder="1" value="1" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:4px 0 10px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;">Kapatıldıysa Doldur (Vergi için)</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Satış Tarihi</div><input id="lf_closed" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Satış Fiyatı ($)</div><input id="lf_sell" type="number" placeholder="8.00" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="margin-bottom:12px"><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">P&L ($) — opsiyonel, otomatik hesaplanır</div><input id="lf_pnl" type="number" placeholder="" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<button id="lfSave" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);border:none;border-radius:12px;padding:15px;color:white;font-family:var(--font-head);font-size:15px;font-weight:600;cursor:pointer;">✅ Kaydet</button>'+'<button id="lfCancel" style="width:100%;margin-top:8px;background:transparent;border:none;padding:12px;color:#475569;font-size:14px;cursor:pointer;">İptal</button></div>';
   document.body.appendChild(m);
+  m.querySelector('#impCancel').onclick=function(){m.remove();};
   m.addEventListener('click',function(e){if(e.target===m)m.remove();});
+  m.querySelector('#impSave').onclick=function(){
+    try{
+      var d=JSON.parse(m.querySelector('#impTa').value);
+      tradesData=d; saveData(); m.remove();
+      renderDashboard(); renderTradeList('all');
+renderPlannedList();
+      alert('✅ Veri yüklendi! '+Object.keys(d).length+' ay, '+getAllTrades().length+' trade.');
+    }catch(e){alert('❌ Geçersiz JSON. Kontrol et ve tekrar dene.');}
+  };
 }
-
 
 // ═══════════════════ FAB / ADD TRADE ═══════════════════
 var SHORT_TYPES = ['CSP','CC','PCS','PMCC','IC','HEDGE','COLLAR CALL','COLLAR PUT'];
@@ -2223,6 +2192,14 @@ function showAddTrade(existingTrade){
 // ═══════════════════ VERGİ ═══════════════════
 var LONG_TYPES = ['LEAPS','Long Call'];
 function isLong(type){ return LONG_TYPES.indexOf((type||'').trim()) !== -1; }
+
+function fmtExpiry(dateStr){
+  if(!dateStr) return '—';
+  var d = new Date(dateStr + 'T00:00:00');
+  if(isNaN(d)) return dateStr;
+  var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return months[d.getMonth()] + ' ' + d.getDate() + " '" + String(d.getFullYear()).slice(2);
+}
 
 function calcTaxForTrade(t){
   var td = taxData[t.id] || {};
