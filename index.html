@@ -675,6 +675,7 @@
   </div>
   <div class="topbar-right">
     <div class="badge-live">LIVE</div>
+    <button id="priceRefreshBtn" onclick="fetchOptionPrices()" style="background:rgba(16,212,142,0.12);border:1px solid rgba(16,212,142,0.22);border-radius:8px;padding:5px 11px;color:#10D48E;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📡 Fiyat</button>
     <div class="topbar-avatar">M</div>
   </div>
 </header>
@@ -1123,6 +1124,97 @@ function deleteTradeById(tradeId, closeOverlay){
   if(typeof renderVergi==='function') renderVergi();
 }
 
+// ═══════════════ HİSSE FİYATLARI ═══════════════════════
+var PROXY_BASE = 'https://voluble-dieffenbachia-243e91.netlify.app';
+
+function _setPriceBtn(html, color, disabled){
+  var btn = document.getElementById('priceRefreshBtn');
+  if(!btn) return;
+  btn.innerHTML = html;
+  btn.style.color = color || '#10D48E';
+  btn.disabled = !!disabled;
+  btn.style.opacity = disabled ? '0.65' : '1';
+}
+
+function _fetchQuote(symbol){
+  var url = PROXY_BASE + '/.netlify/functions/quote?symbol=' + encodeURIComponent(symbol);
+  return fetch(url).then(function(r){
+    if(!r.ok) return r.json().then(function(e){ throw new Error(e.error||r.status); });
+    return r.json();
+  });
+}
+
+function _fetchBulkQuotes(tickers){
+  if(!tickers.length) return Promise.resolve({});
+  var url = PROXY_BASE + '/.netlify/functions/quote?symbol=' + tickers.map(encodeURIComponent).join(',');
+  return fetch(url)
+    .then(function(r){ if(!r.ok) throw new Error('bulk '+r.status); return r.json(); })
+    .then(function(data){
+      var map = {};
+      var list = data.quotes || (data.symbol ? [data] : []);
+      list.forEach(function(q){ if(q.symbol && q.price > 0) map[q.symbol.toUpperCase()] = q.price; });
+      if(!Object.keys(map).length) throw new Error('no prices');
+      return map;
+    })
+    .catch(function(bulkErr){
+      console.warn('[optflow] bulk failed:', bulkErr.message, '— going sequential');
+      var map = {}; var chain = Promise.resolve();
+      tickers.forEach(function(ticker){
+        chain = chain.then(function(){
+          return _fetchQuote(ticker)
+            .then(function(q){ if(q && q.price > 0) map[ticker.toUpperCase()] = q.price; })
+            .catch(function(e){ console.warn('[optflow] quote failed:', ticker, e.message); });
+        });
+      });
+      return chain.then(function(){ return map; });
+    });
+}
+
+function fetchOptionPrices(){
+  if(_pricesFetching) return;
+  // Açık pozisyonlardan unique ticker'ları çıkar
+  var open = getOpenTrades();
+  var tickers = [];
+  open.forEach(function(t){
+    var tk = t.ticker.split(' ')[0].toUpperCase();
+    if(tk && tickers.indexOf(tk) < 0) tickers.push(tk);
+  });
+  if(!tickers.length){ _setPriceBtn('📡 Fiyat', '#10D48E', false); return; }
+
+  _pricesFetching = true;
+  _setPriceBtn('⟳ Güncelleniyor...', '#FFB020', true);
+
+  _fetchBulkQuotes(tickers)
+    .then(function(map){
+      var updated = 0;
+      Object.keys(map).forEach(function(tk){
+        var p = map[tk];
+        if(p && p > 0){ stockPrices[tk] = Math.round(p*100)/100; updated++; }
+      });
+      _pricesFetching = false;
+      saveStockPrices();
+      _lastPriceUpdate = new Date();
+      renderTradeList(currentFilter);
+      renderDashboard();
+      var total = tickers.length;
+      if(updated === 0){
+        _setPriceBtn('✗ Fiyat alınamadı', '#FF4F7B', false);
+      } else if(updated < total){
+        _setPriceBtn('⚠ '+updated+'/'+total, '#FFB020', false);
+      } else {
+        _setPriceBtn('✓ '+updated+'/'+total+' ✓', '#10D48E', false);
+      }
+      setTimeout(function(){ _setPriceBtn('📡 Fiyat', '#10D48E', false); }, 5000);
+    })
+    .catch(function(err){
+      _pricesFetching = false;
+      console.error('[optflow] fetchOptionPrices error:', err);
+      _setPriceBtn('✗ Hata', '#FF4F7B', false);
+      setTimeout(function(){ _setPriceBtn('📡 Fiyat', '#10D48E', false); }, 5000);
+    });
+}
+// ═══════════════════════════════════════════════════════
+
 function showDeleteConfirm(onConfirm){
   var _delOv=document.createElement('div');
   _delOv.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:24px';
@@ -1155,6 +1247,12 @@ function showDeleteConfirm(onConfirm){
 // ─────────────────────────────────────────────────────────
 
 var PLAN_LS = 'planned_v1';
+var LS_STOCK_PRICES = 'optflow_prices_v1';
+var stockPrices = {}; // { 'NVDA': 118.5, 'AMD': 95.2 }
+try { var _sp = localStorage.getItem(LS_STOCK_PRICES); if(_sp) stockPrices = JSON.parse(_sp); } catch(e){}
+function saveStockPrices(){ try{ localStorage.setItem(LS_STOCK_PRICES, JSON.stringify(stockPrices)); }catch(e){} }
+var _lastPriceUpdate = null;
+var _pricesFetching = false;
 var plannedTrades = [];
 try { var _pl2 = localStorage.getItem(PLAN_LS); if(_pl2) plannedTrades = JSON.parse(_pl2); } catch(e){}
 function savePlanned(){ try { localStorage.setItem(PLAN_LS, JSON.stringify(plannedTrades)); } catch(e){} }
@@ -1706,7 +1804,17 @@ function renderTradeList(filter, month){
               '<span style="font-weight:600;color:var(--text);font-size:12px;">'+t.ticker.split(' ')[0]+'</span>'+
             '</div></td>'+
           '<td style="padding:9px 8px;white-space:nowrap;"><span style="background:'+typeColor+'22;color:'+typeColor+';border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700">'+t.type+'</span></td>'+
-          '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text);white-space:nowrap">$'+t.strike+'</td>'+
+          (function(){
+            var _tk=t.ticker.split(' ')[0].toUpperCase();
+            var _sp=stockPrices[_tk];
+            var _stk=parseFloat(t.strike);
+            var _dist=(_sp&&_stk)?((_sp-_stk)/_stk*100):null;
+            var _dc=_dist===null?'var(--text-2)':Math.abs(_dist)<3?'var(--loss)':Math.abs(_dist)<8?'var(--warn)':'var(--profit)';
+            return '<td style="padding:9px 8px;text-align:right;white-space:nowrap;">'+
+              '<div style="font-family:var(--font-mono);color:var(--text);font-size:12px;">$'+t.strike+'</div>'+
+              (_sp?'<div style="font-family:var(--font-mono);font-size:10px;color:'+_dc+';">$'+_sp+' ('+((_dist>=0?'+':'')+_dist.toFixed(1))+'%)</div>':'')+
+              '</td>';
+          })()+
           '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text-2);font-size:11px;white-space:nowrap">'+fmtExpiry(t.expiry)+'</td>'+
           '<td style="padding:9px 8px;text-align:center;font-family:var(--font-mono);color:var(--text-2);white-space:nowrap">'+(_partlyOpen?(_remainingQty+'/'+t.q):t.q)+'</td>'+
           '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text);white-space:nowrap">'+fmtA$(parseFloat(t.openPremium)||parseFloat(t.premium)||0)+'</td>'+
@@ -1775,7 +1883,19 @@ function renderTradeList(filter, month){
         '<div><div class="trade-pnl-val" style="color:'+pc+'">'+(isOpen?(_partlyOpen?fmt$(shownPnl):'Open'):fmt$(displayPnl))+'</div>'+
         '<div class="trade-pnl-pct" style="color:'+pc+'">'+(_pct2!=null?fmtP(_pct2):(_partlyOpen?(_remainingQty+' kontrat açık'):(isOpen?'pending':'')))+'</div></div></div>'+
       '<div class="trade-card-body">'+
-        '<div><div class="trade-metric-lbl">Strike</div><div class="trade-metric-val">$'+t.strike+'</div></div>'+
+        (function(){
+  var _tk=t.ticker.split(' ')[0].toUpperCase();
+  var _sp=stockPrices[_tk];
+  var _stk=parseFloat(t.strike);
+  var _dist=(_sp&&_stk)?((_sp-_stk)/_stk*100):null;
+  var _dc=_dist===null?'var(--text-2)':Math.abs(_dist)<3?'var(--loss)':Math.abs(_dist)<8?'var(--warn)':'var(--profit)';
+  return '<div><div class="trade-metric-lbl">Strike / Fiyat</div>'+
+    '<div class="trade-metric-val" style="font-size:12px;">'+
+    '<span>$'+t.strike+'</span>'+
+    (_sp?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+_sp+
+    ' <span style="font-size:9px;">('+(_dist>=0?'+':'')+_dist.toFixed(1)+'%)</span></span>':'')+
+    '</div></div>';
+})()+''+
         '<div><div class="trade-metric-lbl">Premium</div><div class="trade-metric-val">'+fmtA$(t.premium)+'</div></div>'+
         '<div><div class="trade-metric-lbl">Qty</div><div class="trade-metric-val">'+(_partlyOpen?(_remainingQty+'/'+t.q):t.q)+' × 100</div></div>'+
         '<div><div class="trade-metric-lbl">Delta</div><div class="trade-metric-val" style="color:'+(t.delta&&t.delta>35?'var(--loss)':'var(--info)')+'">'+(t.delta!=null?t.delta:'—')+'</div></div>'+
