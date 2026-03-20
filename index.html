@@ -1776,10 +1776,10 @@ function renderTradeList(filter, month){
   // ── Liste view ──
   if(currentTradeView === 'list'){
     listEl.style.overflowX = '';
-    listEl.innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;">' +
+    listEl.innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;position:relative;">' +
       '<table style="width:100%;min-width:520px;border-collapse:collapse;font-size:12px;">' +
       '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">' +
-        '<th style="text-align:left;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Ticker</th>' +
+        '<th style="text-align:left;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap;position:sticky;left:0;z-index:3;background:#3D3530;">Ticker</th>' +
         '<th style="text-align:left;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Tür</th>' +
         '<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Strike</th>' +
         '<th style="text-align:right;padding:7px 8px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;white-space:nowrap">Vade</th>' +
@@ -1814,7 +1814,7 @@ function renderTradeList(filter, month){
         var typeColor=tagC[t.type]||'#94a3b8';
         return '<tr data-tid="'+t.id+'" data-tmonth="'+t.month+'" style="border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;background:'+rowBg+'" '+
           'onclick="openTradeDetail(this.dataset.tid,this.dataset.tmonth)">' +
-          '<td style="padding:9px 8px;">' +
+          '<td style="padding:9px 8px;position:sticky;left:0;z-index:2;background:#453C36;box-shadow:4px 0 8px rgba(0,0,0,0.3);">' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
               '<div style="width:24px;height:24px;border-radius:6px;background:'+tc.bg+';color:'+tc.color+';font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+t.ticker.split(' ')[0].slice(0,4)+'</div>'+
               '<div style="display:flex;flex-direction:column;gap:1px;">'+
