@@ -2083,22 +2083,86 @@ function exportData(){
 }
 function importData(){
   var m=document.createElement('div');
-  m.style.cssText='position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
-  m.innerHTML='<div style="width:100%;max-width:500px;background:#1a2234;border-radius:20px 20px 0 0;border-top:1px solid rgba(255,255,255,.1);padding:20px 20px 36px;max-height:88vh;overflow-y:auto;">'+'<div style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 20px;"></div>'+'<div style="font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:20px;">'+(existingLeap?'LEAPS Düzenle':'LEAPS Pozisyonu Ekle')+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Ticker</div><input id="lf_t" placeholder="NVDA" autocapitalize="characters" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Yön</div><select id="lf_d" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"><option>Call</option><option>Put</option></select></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Strike ($)</div><input id="lf_s" type="number" placeholder="45" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Vade (Expiry)</div><input id="lf_e" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Alış Tarihi</div><input id="lf_opened" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Alış Fiyatı ($)</div><input id="lf_c" type="number" placeholder="4.50" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Güncel Fiyat ($)</div><input id="lf_cur" type="number" placeholder="5.20" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Hedef Fiyat ($)</div><input id="lf_tg" type="number" placeholder="10.00" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="margin-bottom:12px"><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Kontrat Sayısı</div><input id="lf_q" type="number" placeholder="1" value="1" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:4px 0 10px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;">Kapatıldıysa Doldur (Vergi için)</div>'+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Satış Tarihi</div><input id="lf_closed" type="date" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<div><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">Satış Fiyatı ($)</div><input id="lf_sell" type="number" placeholder="8.00" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'</div>'+'<div style="margin-bottom:12px"><div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px">P&L ($) — opsiyonel, otomatik hesaplanır</div><input id="lf_pnl" type="number" placeholder="" step="0.01" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;color:#F1F5F9;font-size:14px;outline:none;width:100%"></div>'+'<button id="lfSave" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);border:none;border-radius:12px;padding:15px;color:white;font-family:var(--font-head);font-size:15px;font-weight:600;cursor:pointer;">✅ Kaydet</button>'+'<button id="lfCancel" style="width:100%;margin-top:8px;background:transparent;border:none;padding:12px;color:#475569;font-size:14px;cursor:pointer;">İptal</button></div>';
-  document.body.appendChild(m);
-  m.querySelector('#impCancel').onclick=function(){m.remove();};
-  m.addEventListener('click',function(e){if(e.target===m)m.remove();});
-  m.querySelector('#impSave').onclick=function(){
-    try{
-      var d=JSON.parse(m.querySelector('#impTa').value);
-      tradesData=d; saveData(); m.remove();
-      renderDashboard(); renderTradeList('all');
-renderPlannedList();
-      alert('✅ Veri yüklendi! '+Object.keys(d).length+' ay, '+getAllTrades().length+' trade.');
-    }catch(e){alert('❌ Geçersiz JSON. Kontrol et ve tekrar dene.');}
-  };
-}
+  m.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;';
 
+  var sh=document.createElement('div');
+  sh.style.cssText='width:100%;max-width:500px;background:#453C36;border-radius:20px 20px 0 0;border-top:1px solid rgba(255,255,255,.12);padding:20px 20px 40px;max-height:85vh;overflow-y:auto;';
+
+  var hdl=document.createElement('div');
+  hdl.style.cssText='width:32px;height:3px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 18px';
+
+  var ttl=document.createElement('div');
+  ttl.style.cssText='font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)';
+  ttl.textContent='📥 Yedek Yükle';
+
+  var desc=document.createElement('div');
+  desc.style.cssText='font-size:12px;color:var(--text-3);margin-bottom:16px;line-height:1.5';
+  desc.textContent='Export ile aldığın JSON dosyasını seç veya içeriğini yapıştır.';
+
+  var fileBtn=document.createElement('button');
+  fileBtn.style.cssText='width:100%;padding:12px;background:rgba(59,130,246,0.12);border:1px dashed rgba(59,130,246,0.4);border-radius:10px;color:var(--info);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px';
+  fileBtn.textContent='📂 JSON Dosyası Seç';
+
+  var fileInp=document.createElement('input');
+  fileInp.type='file'; fileInp.accept='.json'; fileInp.style.display='none';
+
+  var ta=document.createElement('textarea');
+  ta.placeholder='veya JSON içeriğini buraya yapıştır...';
+  ta.style.cssText='width:100%;height:120px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px;color:var(--text);font-size:12px;font-family:var(--font-mono);outline:none;resize:none;margin-bottom:14px;-webkit-appearance:none';
+
+  fileInp.onchange=function(e){
+    var file=e.target.files[0]; if(!file) return;
+    fileBtn.textContent='📄 '+file.name;
+    fileBtn.style.borderColor='rgba(34,197,94,0.5)';
+    fileBtn.style.color='var(--profit)';
+    var reader=new FileReader();
+    reader.onload=function(ev){ ta.value=ev.target.result; };
+    reader.readAsText(file);
+  };
+  fileBtn.onclick=function(){ fileInp.click(); };
+
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:10px';
+
+  var cancelBtn=document.createElement('button');
+  cancelBtn.style.cssText='flex:1;padding:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--text-2);font-size:14px;cursor:pointer;font-family:inherit';
+  cancelBtn.textContent='İptal';
+  cancelBtn.onclick=function(){m.remove();};
+
+  var saveBtn=document.createElement('button');
+  saveBtn.style.cssText='flex:2;padding:13px;background:var(--info);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit';
+  saveBtn.textContent='✅ Yükle';
+  saveBtn.onclick=function(){
+    try{
+      var raw=ta.value.trim();
+      if(!raw){alert('Dosya seç veya JSON yapıştır');return;}
+      var d=JSON.parse(raw);
+      if(typeof d!=='object'||Array.isArray(d)){alert('Geçersiz format.');return;}
+      tradesData=d;
+      saveData();
+      if(typeof deletedIds!=='undefined'){deletedIds=[];saveDeletedIds();}
+      m.remove();
+      renderDashboard();renderTradeList('all');
+      if(typeof renderPlannedList==='function')renderPlannedList();
+      if(typeof renderVergi==='function')renderVergi();
+      var tot=getAllTrades().length;
+      var t=document.createElement('div');
+      t.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--profit);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:99999;white-space:nowrap';
+      t.textContent='✅ '+Object.keys(d).length+' ay, '+tot+' trade yüklendi';
+      document.body.appendChild(t);
+      setTimeout(function(){t.remove();},3000);
+    }catch(e){alert('Geçersiz JSON: '+e.message);}
+  };
+
+  btnRow.appendChild(cancelBtn);btnRow.appendChild(saveBtn);
+  sh.appendChild(hdl);sh.appendChild(ttl);sh.appendChild(desc);
+  sh.appendChild(fileBtn);sh.appendChild(fileInp);
+  sh.appendChild(ta);sh.appendChild(btnRow);
+  m.appendChild(sh);
+  document.body.appendChild(m);
+  m.addEventListener('click',function(e){if(e.target===m)m.remove();});
+  setTimeout(function(){ta.focus();},100);
+}
 // ═══════════════════ FAB / ADD TRADE ═══════════════════
 var SHORT_TYPES = ['CSP','CC','PCS','PMCC','IC','HEDGE','COLLAR CALL','COLLAR PUT'];
 function isShortType(type){ return SHORT_TYPES.indexOf((type||'').trim()) !== -1; }
