@@ -2294,27 +2294,39 @@ function showAddTrade(existingTrade){
         pnl=null;
       }
 
-      // partialCloses varsa pnl'i doğru hesapla
-      // Formül: openPrem - openKom - Σ(closePrem) - Σ(closeKom)
-      var _existingPC = (isEdit && existingTrade.partialCloses) ? existingTrade.partialCloses : [];
-      if(_existingPC.length > 0 && pnl === null){
-        // partialCloses var, pnl'i yeniden hesapla
+      var _existingPC = (isEdit && existingTrade.partialCloses) ? JSON.parse(JSON.stringify(existingTrade.partialCloses)) : [];
+      var _tradeTypeVal = sheet.querySelector('#nt_ty').value;
+      var _isLongType = (_tradeTypeVal==='LEAPS'||_tradeTypeVal==='Long Call');
+
+      // PnL hesaplama mantığı:
+      // 1) Elle P&L girilmişse: direkt kullan
+      // 2) partialCloses YOKSA ve closePrem girilmişse: closePrem/closeKom'dan hesapla
+      // 3) partialCloses VARSA: son partialClose entry'sini closePrem/closeKom ile güncelle, toplamı hesapla
+
+      if(pnl !== null){
+        // Elle girildi, kullan
+      } else if(_existingPC.length === 0){
+        // partialCloses yok — closePrem'den hesapla
+        if(closePrem != null && closedDate){
+          pnl = _isLongType ? (closePrem-closeKom-openPrem-openKom) : (openPrem-openKom-closePrem-closeKom);
+          pnl = Math.round(pnl*100)/100;
+        }
+      } else {
+        // partialCloses VAR — son entry'yi kapanış bilgileriyle güncelle (editten geliyorsa)
+        // Son entry'nin closePremium ve closeCommission'ını formdan gelen değerle güncelle
+        if(closePrem != null){
+          var _lastIdx = _existingPC.length - 1;
+          _existingPC[_lastIdx].closePremium  = closePrem;
+          _existingPC[_lastIdx].closeCommission = closeKom;
+          if(closedDate) _existingPC[_lastIdx].date = closedDate;
+        }
+        // Tüm partial'lardan topla
         var _sumCP2 = _existingPC.reduce(function(s,x){return s+(x.closePremium||0);},0);
         var _sumCK2 = _existingPC.reduce(function(s,x){return s+(x.closeCommission||0);},0);
-        var _tradeType2 = sheet.querySelector('#nt_ty').value;
-        var _isLong2 = (_tradeType2==='LEAPS'||_tradeType2==='Long Call');
-        pnl = _isLong2 ? (_sumCP2-_sumCK2-openPrem-openKom) : (openPrem-openKom-_sumCP2-_sumCK2);
-        pnl = Math.round(pnl*100)/100;
-      } else if(_existingPC.length > 0 && pnl !== null){
-        // pnl elle girilmiş, bırak
-      }
-      // pnl hâlâ null ama closePrem var (yeni tek seferlik kapanış)
-      if(pnl === null && closePrem != null && closedDate){
-        var _tradeType3 = sheet.querySelector('#nt_ty').value;
-        var _isLong3 = (_tradeType3==='LEAPS'||_tradeType3==='Long Call');
-        pnl = _isLong3 ? (closePrem-closeKom-openPrem-openKom) : (openPrem-openKom-closePrem-closeKom);
+        pnl = _isLongType ? (_sumCP2-_sumCK2-openPrem-openKom) : (openPrem-openKom-_sumCP2-_sumCK2);
         pnl = Math.round(pnl*100)/100;
       }
+
       if(pnl!==null&&!closedDate) closedDate=new Date().toISOString().split('T')[0];
 
       var trade={
