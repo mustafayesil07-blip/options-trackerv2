@@ -2910,12 +2910,13 @@ function openTradeDetail(tradeId, month){
     var grow1=document.createElement('div');grow1.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px';
     grow1.appendChild(mkInp('td_date','date','','Kapanış Tarihi'));grow1.appendChild(mkInp('td_pnl','number','opsiyonel','P&L ($) — opsiyonel'));
     var grow2=document.createElement('div');grow2.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px';
-    grow2.appendChild(mkInp('td_cp','number','0.00',closePremLabel2+' (toplam)'));grow2.appendChild(mkInp('td_kom_k','number','0.00','Komisyon ($) (toplam)'));
-    // Kapanış primi ve komisyon için default 0 set et
-    setTimeout(function(){
-      var _cp=document.getElementById('td_cp'); if(_cp&&_cp.value==='') _cp.value='0';
-      var _ck=document.getElementById('td_kom_k'); if(_ck&&_ck.value==='') _ck.value='0';
-    },10);
+    // Kapanış primi — referansı sakla
+    var _cpWrap=mkInp('td_cp','number','0.00',closePremLabel2+' (toplam)');
+    var _cpInp=_cpWrap.querySelector('input'); _cpInp.value='';
+    var _ckWrap=mkInp('td_kom_k','number','0.00','Komisyon ($) (toplam)');
+    var _ckInp=_ckWrap.querySelector('input'); _ckInp.value='';
+    grow2.appendChild(_cpWrap);grow2.appendChild(_ckWrap);
+
 
     // P&L önizleme
     var pnlPreview=document.createElement('div');
@@ -2932,9 +2933,9 @@ function openTradeDetail(tradeId, month){
 
     // Anlık PnL preview hesapla
     function updatePnlPreview(){
-      var _cpStr=document.getElementById('td_cp')?document.getElementById('td_cp').value:'';
+      var _cpStr=_cpInp?_cpInp.value:'';
       var _pStr=document.getElementById('td_pnl')?document.getElementById('td_pnl').value:'';
-      var _komStr=document.getElementById('td_kom_k')?document.getElementById('td_kom_k').value:'';
+      var _komStr=_ckInp?_ckInp.value:'';
       var _qStr=document.getElementById('td_qty')?document.getElementById('td_qty').value:'';
       var _cp=parseFloat(_cpStr); var _pk=parseFloat(_pStr); var _km=parseFloat(_komStr)||0;
       var _cq=isPartialMode?(parseInt(_qStr)||1):remainingQ;
@@ -2974,22 +2975,26 @@ function openTradeDetail(tradeId, month){
     }
     // Preview'u inputlara bağla
     setTimeout(function(){
-      ['td_cp','td_pnl','td_kom_k','td_qty'].forEach(function(id){
-        var el=document.getElementById(id); if(el) el.oninput=updatePnlPreview;
-      });
+      if(_cpInp) _cpInp.oninput=updatePnlPreview;
+      if(_ckInp) _ckInp.oninput=updatePnlPreview;
+      var _pnlEl=document.getElementById('td_pnl'); if(_pnlEl) _pnlEl.oninput=updatePnlPreview;
+      var _qtyEl=document.getElementById('td_qty'); if(_qtyEl) _qtyEl.oninput=updatePnlPreview;
     },50);
     var isPartialMode=false;
     btnTam.onclick=function(){isPartialMode=false;btnTam.style.border='2px solid rgba(34,197,94,0.5)';btnKismi.style.border='1px solid rgba(245,158,11,0.3)';qWrap.style.display='none';closeBtn.textContent='✅ Pozisyonu Tam Kapat';closeBtn.style.background='linear-gradient(135deg,var(--profit),#0EA870)';};
     btnKismi.onclick=function(){isPartialMode=true;btnKismi.style.border='2px solid rgba(245,158,11,0.6)';btnTam.style.border='1px solid rgba(34,197,94,0.2)';qWrap.style.display='block';closeBtn.textContent='⚡ Kısmen Kapat';closeBtn.style.background='linear-gradient(135deg,#F59E0B,#D97706)';};
     var closeBtn=document.createElement('button');closeBtn.style.cssText='width:100%;margin-top:10px;background:linear-gradient(135deg,var(--profit),#0EA870);border:none;border-radius:12px;padding:14px;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer';closeBtn.textContent='✅ Pozisyonu Tam Kapat';
     closeBtn.onclick=function(){
-      var d=document.getElementById('td_date').value;
-      var pStr=(document.getElementById('td_pnl').value||'').trim();
-      // Kapanış primini ve komisyonu güvenli oku (virgül→nokta, boş→0)
-      var _cpRaw=(document.getElementById('td_cp').value||'').trim().replace(',','.');
+      // Direkt element referanslarını kullan (getElementById yerine)
+      var _dateInp=document.getElementById('td_date');
+      var _pnlInp=document.getElementById('td_pnl');
+      var d=_dateInp?_dateInp.value:'';
+      var pStr=(_pnlInp?_pnlInp.value||'':'').trim();
+      // Kapanış primi ve komisyon — direkt _cpInp, _ckInp referansları
+      var _cpRaw=(_cpInp?_cpInp.value||'':'').trim().replace(',','.');
       var cpVal=_cpRaw===''?0:parseFloat(_cpRaw);
       if(isNaN(cpVal))cpVal=0;
-      var _komRaw=(document.getElementById('td_kom_k').value||'').trim().replace(',','.');
+      var _komRaw=(_ckInp?_ckInp.value||'':'').trim().replace(',','.');
       var komK=_komRaw===''?0:parseFloat(_komRaw);
       if(isNaN(komK))komK=0;
       if(!d){alert('Tarih gir');return;}
