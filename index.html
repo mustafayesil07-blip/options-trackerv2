@@ -1824,11 +1824,22 @@ function renderTradeList(filter, month){
             var _tk=t.ticker.split(' ')[0].toUpperCase();
             var _sp=stockPrices[_tk];
             var _stk=parseFloat(t.strike);
-            var _dist=(_sp&&_stk)?((_sp-_stk)/_sp*100):null; // % düşüş gereksinimi
-            var _dc=_dist===null?'var(--text-2)':_dist<0?'#ef4444':_dist<3?'var(--loss)':_dist<6?'var(--warn)':'var(--profit)';
+            var _shortPuts=['CSP','PCS','COLLAR PUT'];
+            var _shortCalls=['CC','PMCC','IC','HEDGE','COLLAR CALL'];
+            var _isShortPut=_shortPuts.indexOf(t.type)>=0;
+            var _isShortCall=_shortCalls.indexOf(t.type)>=0;
+            var _dist=null;
+            if(_sp&&_stk){
+              if(_isShortPut)  _dist=(_sp-_stk)/_sp*100;  // düşüş gereksinimi
+              else if(_isShortCall) _dist=(_stk-_sp)/_sp*100; // yükseliş gereksinimi
+            }
+            var _itm=_dist!==null&&_dist<0;
+            var _dc=_dist===null?'var(--text-2)':_itm?'#ef4444':_dist<3?'var(--loss)':_dist<6?'var(--warn)':'var(--profit)';
+            var _arrow=_isShortCall?'↑':'↓';
             return '<td style="padding:9px 8px;text-align:right;white-space:nowrap;">'+
               '<div style="font-family:var(--font-mono);color:var(--text);font-size:12px;">$'+t.strike+'</div>'+
-              (_sp?'<div style="font-family:var(--font-mono);font-size:10px;color:'+_dc+';">$'+_sp+' ('+((_dist<0?'⚠ ITM ':(_dist>=0?'-':'+'))+Math.abs(_dist).toFixed(1))+'%)</div>':'')+
+              (_sp&&_dist!==null?'<div style="font-family:var(--font-mono);font-size:10px;color:'+_dc+';">$'+_sp+' '+(_itm?'ITM ':_arrow)+Math.abs(_dist).toFixed(1)+'%</div>':
+               _sp?'<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);">$'+_sp+'</div>':'')+
               '</td>';
           })()+
           '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text-2);font-size:11px;white-space:nowrap">'+fmtExpiry(t.expiry)+'</td>'+
@@ -1903,13 +1914,24 @@ function renderTradeList(filter, month){
   var _tk=t.ticker.split(' ')[0].toUpperCase();
   var _sp=stockPrices[_tk];
   var _stk=parseFloat(t.strike);
-  var _dist=(_sp&&_stk)?((_sp-_stk)/_sp*100):null; // % düşüş gereksinimi
-  var _dc=_dist===null?'var(--text-2)':_dist<0?'#ef4444':_dist<3?'var(--loss)':_dist<6?'var(--warn)':'var(--profit)';
+  var _sPuts=['CSP','PCS','COLLAR PUT'];
+  var _sCalls=['CC','PMCC','IC','HEDGE','COLLAR CALL'];
+  var _isSP=_sPuts.indexOf(t.type)>=0;
+  var _isSC=_sCalls.indexOf(t.type)>=0;
+  var _dist=null;
+  if(_sp&&_stk){
+    if(_isSP)       _dist=(_sp-_stk)/_sp*100;   // kaç % düşerse strike'a ulaşır
+    else if(_isSC)  _dist=(_stk-_sp)/_sp*100;   // kaç % yükselirse strike'a ulaşır
+  }
+  var _itm=_dist!==null&&_dist<0;
+  var _dc=_dist===null?'var(--text-2)':_itm?'#ef4444':_dist<3?'var(--loss)':_dist<6?'var(--warn)':'var(--profit)';
+  var _arr=_isSC?'↑':'↓';
   return '<div><div class="trade-metric-lbl">Strike / Fiyat</div>'+
     '<div class="trade-metric-val" style="font-size:12px;">'+
     '<span>$'+t.strike+'</span>'+
-    (_sp?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+_sp+
-    ' <span style="font-size:9px;">('+(_dist<0?'ITM ':(_dist<3?'!':'-'))+Math.abs(_dist).toFixed(1)+'%)</span></span>':'')+
+    (_sp&&_dist!==null?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+_sp+
+    ' <span style="font-size:9px;">'+(_itm?'ITM ':_arr)+Math.abs(_dist).toFixed(1)+'%</span></span>':
+     _sp?'<span style="color:var(--text-3);margin-left:5px;font-size:11px;">$'+_sp+'</span>':'')+
     '</div></div>';
 })()+''+
         '<div><div class="trade-metric-lbl">Premium</div><div class="trade-metric-val">'+fmtA$(t.premium)+'</div></div>'+
