@@ -1151,9 +1151,22 @@ function _fetchBulkQuotes(tickers){
     .then(function(r){ if(!r.ok) throw new Error('bulk '+r.status); return r.json(); })
     .then(function(data){
       var map = {};
-      var list = data.quotes || (data.symbol ? [data] : []);
-      list.forEach(function(q){ if(q.symbol && q.price > 0) map[q.symbol.toUpperCase()] = q.price; });
-      if(!Object.keys(map).length) throw new Error('no prices');
+      // Proxy tek sembol döndürebilir (obje) veya çoklu (quotes array)
+      var list = [];
+      if(Array.isArray(data)) list = data;
+      else if(data.quotes) list = data.quotes;
+      else if(data.symbol) list = [data];
+      else {
+        // Bazen {NVDA:{price:...}} formatı
+        Object.keys(data).forEach(function(k){
+          if(data[k] && data[k].price) list.push({symbol:k, price:data[k].price});
+        });
+      }
+      list.forEach(function(q){
+        var p = q.price || q.regularMarketPrice || q.ask || 0;
+        if(q.symbol && p > 0) map[q.symbol.toUpperCase()] = parseFloat(p);
+      });
+      if(!Object.keys(map).length) throw new Error('no prices in response');
       return map;
     })
     .catch(function(bulkErr){
@@ -1162,7 +1175,10 @@ function _fetchBulkQuotes(tickers){
       tickers.forEach(function(ticker){
         chain = chain.then(function(){
           return _fetchQuote(ticker)
-            .then(function(q){ if(q && q.price > 0) map[ticker.toUpperCase()] = q.price; })
+            .then(function(q){
+              var p = q && (q.price || q.regularMarketPrice || 0);
+              if(p > 0) map[ticker.toUpperCase()] = parseFloat(p);
+            })
             .catch(function(e){ console.warn('[optflow] quote failed:', ticker, e.message); });
         });
       });
@@ -3108,15 +3124,23 @@ function switchScreen(name){
   if(name==='reports')renderReports();
   if(name==='trades'){
     // İlk girişte: liste görünümü, closed, mevcut ay
-    var _monthNames=['Aralik','Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim'];
-    var _curM = _monthNames[new Date().getMonth()];
+    // JS getMonth(): 0=Ocak,1=Subat,2=Mart,...,11=Aralik
+    var _jsToApp=['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+    var _curM = _jsToApp[new Date().getMonth()];
+    // Eğer bu ay filter-pill'de yoksa, var olan son ayı bul
+    var _pills = document.querySelectorAll('#monthFilterRow .filter-pill[data-month]');
+    var _availMonths = [];
+    _pills.forEach(function(p){ if(p.dataset.month !== 'all') _availMonths.push(p.dataset.month); });
+    if(_availMonths.indexOf(_curM) < 0 && _availMonths.length > 0){
+      _curM = _availMonths[_availMonths.length - 1]; // son ay
+    }
     // Filtre ve ay'ı set et
-    currentFilter='closed';
-    currentMonthFilter=_curM;
+    currentFilter='open';
+    currentMonthFilter='all';
     currentTradeView='list';
     // Filter pill'leri güncelle
     document.querySelectorAll('#typeFilterRow .filter-pill').forEach(function(x){
-      x.classList.toggle('active', x.dataset.filter==='closed');
+      x.classList.toggle('active', x.dataset.filter==='open');
     });
     document.querySelectorAll('#monthFilterRow .filter-pill').forEach(function(x){
       x.classList.toggle('active', x.dataset.month===_curM);
