@@ -1054,6 +1054,11 @@ function showStatInfo(key){
       title: "Islem Sayisi",
       desc: "Secili donemde tamamen kapatilan toplam islem sayisi.",
       tip: "Istatistiklerin istatistiksel olarak anlamli olmasi icin en az 20-30 islem onerilir. Az sayida islemde win rate ve profit factor cok oynak olup yaniltici sonuclar verebilir."
+    },
+    "Ort. Elde Tutma": {
+      title: "Ortalama Elde Tutma Suresi",
+      desc: "CSP, PCS, IC, CC ve PMCC pozisyonlarinin acilis ile kapanis tarihleri arasindaki ortalama gun sayisi. LEAPS ve Long Call dahil edilmez.",
+      tip: "Theta decay en hizli son 21 gunde gerceklesir. 14-21 gun araliginda kapamak optimal kabul edilir. Cok kisa (3-5 gun) olmasi agresif, cok uzun (45+ gun) olmasi theta avantajini kaybettirebilir."
     }
   };
   var key2 = key.indexOf('Trades') === 0 ? 'Trades' : key;
