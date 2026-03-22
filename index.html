@@ -2045,8 +2045,18 @@ function renderStats(){
     {l:'Payoff Ratio',v:stats.payoff.toFixed(2)+'×',sub:'Win:Loss size',c:'var(--warn)'},
     {l:'EV / Trade',v:fmt$(stats.ev),sub:'expected value',c:stats.ev>=0?'var(--profit)':'var(--loss)'},
     {l:'Total P&L',v:fmt$(stats.totalPnl),sub:fmtP(stats.totalPnl/PORT_SIZE)+' return',c:stats.totalPnl>=0?'var(--profit)':'var(--loss)',full:true},
-    {l:'Ort. Elde Tutma',v:(function(){var h=calcAvgHoldDays(closed);return h!==null?h+' gün':'—';})(),sub:'CSP/PCS/IC/CC/PMCC',c:'var(--purple)',full:true}
-  ].map(function(x){return'<div class="stats-big-card'+(x.full?' full':'')+'"><div class="stat-big-lbl">'+x.l+'</div><div class="stat-big-val" style="color:'+x.c+'">'+x.v+'</div><div class="stat-big-sub">'+x.sub+'</div>'+(x.bar!=null?'<div class="stat-big-bar"><div class="stat-big-bar-fill" style="width:'+Math.round(x.bar*100)+'%;background:'+x.bc+'"></div></div>':'')+'</div>';}).join('');
+    {l:'Ort. Elde Tutma',v:(function(){var h=calcAvgHoldDays(closed);return h!==null?h+' gün':'—';})(),sub:'CSP/PCS/IC/CC/PMCC',c:'var(--purple)',full:true},
+    (function(){
+      var SPREAD=['CSP','PCS','IC'];
+      var sp=closed.filter(function(t){return SPREAD.indexOf(t.type)>=0;});
+      var wr=sp.length?sp.filter(function(t){return t.pnl>0;}).length/sp.length:null;
+      var hd=calcAvgHoldDays(sp);
+      return [
+        {l:'CSP/PCS/IC Win Rate',v:wr!==null?Math.round(wr*100)+'%':'—',sub:sp.length+' islem',bar:wr||0,bc:'var(--profit)',c:wr===null?'var(--text-3)':wr>=0.7?'var(--profit)':wr>=0.5?'var(--warn)':'var(--loss)'},
+        {l:'CSP/PCS/IC Elde Tutma',v:hd!==null?hd+' gün':'—',sub:'ort. gün sayisi',c:'var(--purple)'}
+      ];
+    })()
+  ].flat().map(function(x){return'<div class="stats-big-card'+(x.full?' full':'')+'"><div class="stat-big-lbl">'+x.l+'</div><div class="stat-big-val" style="color:'+x.c+'">'+x.v+'</div><div class="stat-big-sub">'+x.sub+'</div>'+(x.bar!=null?'<div class="stat-big-bar"><div class="stat-big-bar-fill" style="width:'+Math.round(x.bar*100)+'%;background:'+x.bc+'"></div></div>':'')+'</div>';}).join('');
   var st=document.getElementById('stratTableInner');
   if(st){var rows=['CSP','CC','PMCC','PCS','IC','Long Call','LEAPS','HEDGE','COLLAR PUT','COLLAR CALL'].map(function(type){var t=closed.filter(function(x){return x.type===type;});if(!t.length)return null;var pnl=t.reduce(function(s,x){return s+x.pnl;},0);var wr=t.length?t.filter(function(x){return x.pnl>0;}).length/t.length:0;return'<div class="perf-row" style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;"><div style="display:flex;align-items:center;"><span class="strategy-tag '+tagCls(type)+'" style="margin:0;">'+type+'</span></div><div class="perf-row-val">'+t.length+'</div><div class="perf-row-val" style="color:'+(wr>=.7?'var(--profit)':wr>=.5?'var(--warn)':'var(--loss)')+'">'+Math.round(wr*100)+'%</div><div class="perf-row-val" style="color:'+(pnl>=0?'var(--profit)':'var(--loss)')+'">'+fmt$(pnl)+'</div></div>';}).filter(Boolean).join('');st.innerHTML='<div class="perf-row" style="background:rgba(255,255,255,0.02);display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;"><div>Strategy</div><div>Trades</div><div>WR%</div><div>P&L</div></div>'+rows;}
 }
