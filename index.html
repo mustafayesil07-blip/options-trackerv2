@@ -1982,12 +1982,10 @@ function renderTradeList(filter, month){
   var _sp=stockPrices[_tk];
   var _pp2=prePostData[_tk]||{};
   var _ms2=_pp2.marketState||'';
-  var _extP=null,_extPct2=null,_extLbl='';
-  if(_ms2==='PRE'&&_pp2.preMarketPrice){_extP=_pp2.preMarketPrice;_extPct2=_pp2.preMarketChangePct;_extLbl='Pre';}
-  else if((_ms2==='POST'||_ms2==='POSTPOST')&&_pp2.postMarketPrice){_extP=_pp2.postMarketPrice;_extPct2=_pp2.postMarketChangePct;_extLbl='Post';}
-  else if(_pp2.preMarketPrice){_extP=_pp2.preMarketPrice;_extPct2=_pp2.preMarketChangePct;_extLbl='Pre';}
-  else if(_pp2.postMarketPrice){_extP=_pp2.postMarketPrice;_extPct2=_pp2.postMarketChangePct;_extLbl='Post';}
-  var _extColor2=_extPct2!=null?(_extPct2>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
+  var _showP=_sp,_showLbl='',_showPct=null;
+  if((_ms2==='PRE'||_ms2==='PREPRE')&&_pp2.preMarketPrice!=null){_showP=_pp2.preMarketPrice;_showPct=_pp2.preMarketChangePct;_showLbl='PRE';}
+  else if((_ms2==='POST'||_ms2==='POSTPOST'||_ms2==='CLOSED')&&_pp2.postMarketPrice!=null){_showP=_pp2.postMarketPrice;_showPct=_pp2.postMarketChangePct;_showLbl='POST';}
+  var _showColor=_showPct!=null?(_showPct>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
   var _stk=parseFloat(t.strike);
   var _sPuts=['CSP','PCS','COLLAR PUT'];
   var _sCalls=['CC','PMCC','HEDGE','COLLAR CALL'];
@@ -1995,32 +1993,35 @@ function renderTradeList(filter, month){
   var _isSP=_sPuts.indexOf(t.type)>=0;
   var _isSC=_sCalls.indexOf(t.type)>=0;
   var _dist=null; var _arr='↓'; var _legLabel='';
-  if(_sp&&_stk){
+  if(_showP&&_stk){
     if(_isIC){
       var _legs=String(t.strike).split('/');
       var _putL=_legs.length===2?parseFloat(_legs[0]):null;
       var _callL=_legs.length===2?parseFloat(_legs[1]):null;
       if(_putL&&_callL){
-        var _dP=(_sp-_putL)/_sp*100;
-        var _dC=(_callL-_sp)/_sp*100;
+        var _dP=(_showP-_putL)/_showP*100;
+        var _dC=(_callL-_showP)/_showP*100;
         var _nearPut=_dP<=_dC;
         _dist=_nearPut?_dP:_dC;
         _arr=_nearPut?'↓':'↑';
         _legLabel=_nearPut?(' put $'+_putL):(' call $'+_callL);
       }
-    } else if(_isSP)  _dist=(_sp-_stk)/_sp*100;
-    else if(_isSC)    _dist=(_stk-_sp)/_sp*100;
+    } else if(_isSP)  _dist=(_showP-_stk)/_showP*100;
+    else if(_isSC)    _dist=(_stk-_showP)/_showP*100;
     if(!_isIC&&_isSC) _arr='↑';
   }
   var _itm=_dist!==null&&_dist<0;
   var _dc=_dist===null?'var(--text-2)':_itm?'#ef4444':_dist<3?'var(--loss)':_dist<6?'var(--warn)':'var(--profit)';
+  var _badge='';
+  if(_showLbl==='PRE') _badge='<span style="display:inline-block;margin-left:5px;padding:1px 5px;border-radius:999px;background:rgba(245,158,11,.15);color:var(--warn);font-size:9px;font-weight:700;vertical-align:middle;">PRE</span>';
+  else if(_showLbl==='POST') _badge='<span style="display:inline-block;margin-left:5px;padding:1px 5px;border-radius:999px;background:rgba(59,130,246,.15);color:var(--info);font-size:9px;font-weight:700;vertical-align:middle;">POST</span>';
   return '<div><div class="trade-metric-lbl">Strike / Fiyat</div>'+
     '<div class="trade-metric-val" style="font-size:12px;">'+
     '<span>$'+t.strike+'</span>'+
-    (_sp&&_dist!==null?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+_sp+
+    (_showP&&_dist!==null?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+Number(_showP).toFixed(2)+_badge+
     ' <span style="font-size:9px;">'+(_itm?'ITM':_arr+Math.abs(_dist).toFixed(1)+'%')+(_legLabel?' '+_legLabel:'')+'</span></span>':
-     _sp?'<span style="color:var(--text-3);margin-left:5px;font-size:11px;">$'+_sp+'</span>':'')+
-    (_extP?'<div style="font-size:9px;color:'+_extColor2+';margin-top:1px;">'+_extLbl+' $'+_extP.toFixed(2)+(_extPct2!=null?' ('+((_extPct2>=0?'+':'')+_extPct2.toFixed(2)+'%)'):'')+' </div>':'')+
+     _showP?'<span style="color:var(--text-3);margin-left:5px;font-size:11px;">$'+Number(_showP).toFixed(2)+_badge+'</span>':'')+
+    (_showLbl&&_showPct!=null?'<div style="font-size:9px;color:'+_showColor+';margin-top:1px;">'+((_showPct>=0?'+':'')+Number(_showPct).toFixed(2))+'%</div>':'')+
     '</div></div>';
 })()+''+
         '<div><div class="trade-metric-lbl">Premium</div><div class="trade-metric-val">'+fmtA$(t.premium)+'</div></div>'+
