@@ -1169,7 +1169,7 @@ function _fetchBulkQuotes(tickers){
       }
       list.forEach(function(q){
         var p = q.price || q.regularMarketPrice || q.ask || 0;
-        if(q.symbol && p > 0) map[q.symbol.toUpperCase()] = parseFloat(p);
+        if(q.symbol && p > 0) map[q.symbol.toUpperCase()] = q; // tam objeyi sakla
       });
       if(!Object.keys(map).length) throw new Error('no prices in response');
       return map;
@@ -1182,7 +1182,7 @@ function _fetchBulkQuotes(tickers){
           return _fetchQuote(ticker)
             .then(function(q){
               var p = q && (q.price || q.regularMarketPrice || 0);
-              if(p > 0) map[ticker.toUpperCase()] = parseFloat(p);
+              if(p > 0) map[ticker.toUpperCase()] = q;
             })
             .catch(function(e){ console.warn('[optflow] quote failed:', ticker, e.message); });
         });
@@ -1209,8 +1209,22 @@ function fetchOptionPrices(){
     .then(function(map){
       var updated = 0;
       Object.keys(map).forEach(function(tk){
-        var p = map[tk];
-        if(p && p > 0){ stockPrices[tk] = Math.round(p*100)/100; updated++; }
+        var q = map[tk];
+        var p = (typeof q === 'object') ? (q.price || q.regularMarketPrice || 0) : parseFloat(q);
+        if(p && p > 0){
+          stockPrices[tk] = Math.round(p*100)/100;
+          // Pre/post market verilerini kaydet
+          if(typeof q === 'object'){
+            var pp = {};
+            if(q.preMarketPrice)     pp.preMarketPrice     = Math.round(q.preMarketPrice*100)/100;
+            if(q.preMarketChangePct  != null) pp.preMarketChangePct  = q.preMarketChangePct;
+            if(q.postMarketPrice)    pp.postMarketPrice    = Math.round(q.postMarketPrice*100)/100;
+            if(q.postMarketChangePct != null) pp.postMarketChangePct = q.postMarketChangePct;
+            if(q.marketState)        pp.marketState        = q.marketState;
+            if(Object.keys(pp).length) prePostData[tk] = pp;
+          }
+          updated++;
+        }
       });
       _pricesFetching = false;
       saveStockPrices();
@@ -1269,9 +1283,15 @@ function showDeleteConfirm(onConfirm){
 
 var PLAN_LS = 'planned_v1';
 var LS_STOCK_PRICES = 'optflow_prices_v1';
-var stockPrices = {}; // { 'NVDA': 118.5, 'AMD': 95.2 }
+var LS_PREPOST = 'optflow_prepost_v1';
+var stockPrices = {}; // { 'NVDA': 118.5 }
+var prePostData = {}; // { 'NVDA': { preMarketPrice, preMarketChangePct, postMarketPrice, postMarketChangePct, marketState } }
 try { var _sp = localStorage.getItem(LS_STOCK_PRICES); if(_sp) stockPrices = JSON.parse(_sp); } catch(e){}
-function saveStockPrices(){ try{ localStorage.setItem(LS_STOCK_PRICES, JSON.stringify(stockPrices)); }catch(e){} }
+try { var _pp = localStorage.getItem(LS_PREPOST); if(_pp) prePostData = JSON.parse(_pp); } catch(e){}
+function saveStockPrices(){
+  try{ localStorage.setItem(LS_STOCK_PRICES, JSON.stringify(stockPrices)); }catch(e){}
+  try{ localStorage.setItem(LS_PREPOST, JSON.stringify(prePostData)); }catch(e){}
+}
 var _lastPriceUpdate = null;
 var _pricesFetching = false;
 var plannedTrades = [];
@@ -1849,6 +1869,14 @@ function renderTradeList(filter, month){
           (function(){
             var _tk=t.ticker.split(' ')[0].toUpperCase();
             var _sp=stockPrices[_tk];
+            var _ppL=prePostData[_tk]||{};
+            var _msL=_ppL.marketState||'';
+            var _extPL=null,_extPctL=null,_extLblL='';
+            if(_msL==='PRE'&&_ppL.preMarketPrice){_extPL=_ppL.preMarketPrice;_extPctL=_ppL.preMarketChangePct;_extLblL='Pre';}
+            else if((_msL==='POST'||_msL==='POSTPOST')&&_ppL.postMarketPrice){_extPL=_ppL.postMarketPrice;_extPctL=_ppL.postMarketChangePct;_extLblL='Post';}
+            else if(_ppL.preMarketPrice){_extPL=_ppL.preMarketPrice;_extPctL=_ppL.preMarketChangePct;_extLblL='Pre';}
+            else if(_ppL.postMarketPrice){_extPL=_ppL.postMarketPrice;_extPctL=_ppL.postMarketChangePct;_extLblL='Post';}
+            var _extColorL=_extPctL!=null?(_extPctL>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
             var _stk=parseFloat(t.strike);
             var _shortPuts=['CSP','PCS','COLLAR PUT'];
             var _shortCalls=['CC','PMCC','HEDGE','COLLAR CALL'];
@@ -1878,6 +1906,7 @@ function renderTradeList(filter, month){
               '<div style="font-family:var(--font-mono);color:var(--text);font-size:12px;">$'+t.strike+'</div>'+
               (_sp&&_dist!==null?'<div style="font-family:var(--font-mono);font-size:10px;color:'+_dc+';">$'+_sp+' '+(_itm?'ITM':_arrow+Math.abs(_dist).toFixed(1)+'%')+_legLbl+'</div>':
                _sp?'<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);">$'+_sp+'</div>':'')+
+              (_extPL?'<div style="font-family:var(--font-mono);font-size:9px;color:'+_extColorL+';">'+_extLblL+' $'+_extPL.toFixed(2)+(_extPctL!=null?' ('+((_extPctL>=0?'+':'')+_extPctL.toFixed(2)+'%)'):'')+' </div>':'')+
               '</td>';
           })()+
           '<td style="padding:9px 8px;text-align:right;font-family:var(--font-mono);color:var(--text-2);font-size:11px;white-space:nowrap">'+fmtExpiry(t.expiry)+'</td>'+
@@ -1951,6 +1980,14 @@ function renderTradeList(filter, month){
         (function(){
   var _tk=t.ticker.split(' ')[0].toUpperCase();
   var _sp=stockPrices[_tk];
+  var _pp2=prePostData[_tk]||{};
+  var _ms2=_pp2.marketState||'';
+  var _extP=null,_extPct2=null,_extLbl='';
+  if(_ms2==='PRE'&&_pp2.preMarketPrice){_extP=_pp2.preMarketPrice;_extPct2=_pp2.preMarketChangePct;_extLbl='Pre';}
+  else if((_ms2==='POST'||_ms2==='POSTPOST')&&_pp2.postMarketPrice){_extP=_pp2.postMarketPrice;_extPct2=_pp2.postMarketChangePct;_extLbl='Post';}
+  else if(_pp2.preMarketPrice){_extP=_pp2.preMarketPrice;_extPct2=_pp2.preMarketChangePct;_extLbl='Pre';}
+  else if(_pp2.postMarketPrice){_extP=_pp2.postMarketPrice;_extPct2=_pp2.postMarketChangePct;_extLbl='Post';}
+  var _extColor2=_extPct2!=null?(_extPct2>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
   var _stk=parseFloat(t.strike);
   var _sPuts=['CSP','PCS','COLLAR PUT'];
   var _sCalls=['CC','PMCC','HEDGE','COLLAR CALL'];
@@ -1983,6 +2020,7 @@ function renderTradeList(filter, month){
     (_sp&&_dist!==null?'<span style="color:'+_dc+';margin-left:5px;font-size:11px;">$'+_sp+
     ' <span style="font-size:9px;">'+(_itm?'ITM':_arr+Math.abs(_dist).toFixed(1)+'%')+(_legLabel?' '+_legLabel:'')+'</span></span>':
      _sp?'<span style="color:var(--text-3);margin-left:5px;font-size:11px;">$'+_sp+'</span>':'')+
+    (_extP?'<div style="font-size:9px;color:'+_extColor2+';margin-top:1px;">'+_extLbl+' $'+_extP.toFixed(2)+(_extPct2!=null?' ('+((_extPct2>=0?'+':'')+_extPct2.toFixed(2)+'%)'):'')+' </div>':'')+
     '</div></div>';
 })()+''+
         '<div><div class="trade-metric-lbl">Premium</div><div class="trade-metric-val">'+fmtA$(t.premium)+'</div></div>'+
