@@ -2,7 +2,6 @@ name: OptionFlow Alert Check
 
 on:
   schedule:
-    # Her 30 dakikada bir — Pazartesi-Cuma, 14:30-21:00 UTC (NYSE saatleri)
     - cron: '30 14 * * 1-5'
     - cron: '0 15 * * 1-5'
     - cron: '30 15 * * 1-5'
@@ -17,7 +16,7 @@ on:
     - cron: '0 20 * * 1-5'
     - cron: '30 20 * * 1-5'
     - cron: '0 21 * * 1-5'
-  workflow_dispatch: # Manuel çalıştırma için
+  workflow_dispatch:
 
 jobs:
   check:
@@ -27,8 +26,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
       - run: npm install
 
