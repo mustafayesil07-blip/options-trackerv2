@@ -1,0 +1,37 @@
+name: OptionFlow Alert Check
+
+on:
+  schedule:
+    # Her 30 dakikada bir — Pazartesi-Cuma, 14:30-21:00 UTC (NYSE saatleri)
+    - cron: '30 14 * * 1-5'
+    - cron: '0 15 * * 1-5'
+    - cron: '30 15 * * 1-5'
+    - cron: '0 16 * * 1-5'
+    - cron: '30 16 * * 1-5'
+    - cron: '0 17 * * 1-5'
+    - cron: '30 17 * * 1-5'
+    - cron: '0 18 * * 1-5'
+    - cron: '30 18 * * 1-5'
+    - cron: '0 19 * * 1-5'
+    - cron: '30 19 * * 1-5'
+    - cron: '0 20 * * 1-5'
+    - cron: '30 20 * * 1-5'
+    - cron: '0 21 * * 1-5'
+  workflow_dispatch: # Manuel çalıştırma için
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install
+
+      - run: node check.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
