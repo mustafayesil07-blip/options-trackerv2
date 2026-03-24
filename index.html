@@ -3813,6 +3813,11 @@ if ('serviceWorker' in navigator) {
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
       if (token) {
         console.info('[FCM] Token:', token);
+        // Ekranda göster
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;bottom:80px;left:12px;right:12px;background:#1a1a1a;color:#22C55E;font-size:11px;font-family:monospace;padding:12px;border-radius:10px;border:1px solid #22C55E;z-index:99999;word-break:break-all;';
+        box.innerHTML = '<b style="display:block;margin-bottom:6px;">FCM Token (kopyala):</b>' + token + '<br><button onclick="navigator.clipboard.writeText(`' + token + '`).then(()=>this.textContent=\'Kopyalandı ✓\')" style="margin-top:8px;background:#22C55E;color:#000;border:none;padding:6px 12px;border-radius:6px;font-weight:bold;cursor:pointer;">Kopyala</button> <button onclick="this.closest(\'div\').remove()" style="background:none;border:1px solid #555;color:#aaa;padding:6px 10px;border-radius:6px;cursor:pointer;">Kapat</button>';
+        document.body.appendChild(box);
       }
     } catch (err) {
       console.error('[FCM] Hata:', err);
