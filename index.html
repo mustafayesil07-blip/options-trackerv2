@@ -1855,7 +1855,7 @@ function renderDashboard(){
   ].map(function(x){
     var _k=x.l.indexOf('Trades')===0?'Trades':x.l;
     return '<div class="stat-cell" onclick="showStatInfo(&quot;'+_k+'&quot;)" style="cursor:pointer;-webkit-user-select:none;user-select:none">'+
-      '<div class="stat-cell-val privacy-val" style="color:'+x.c+'">'+x.v+'</div>'+
+      '<div class="stat-cell-val" style="color:'+x.c+'">'+x.v+'</div>'+
       '<div class="stat-cell-lbl">'+x.l+' <span style="font-size:9px;opacity:0.4;vertical-align:middle">&#x24D8;</span></div>'+
     '</div>';
   }).join('');
@@ -2198,7 +2198,7 @@ function renderStats(){
     {l:'Avg Loss',v:fmtA$(stats.avgLoss),sub:'per trade',c:'var(--loss)'},
     {l:'Payoff Ratio',v:stats.payoff.toFixed(2)+'×',sub:'Win:Loss size',c:'var(--warn)'},
     {l:'EV / Trade',v:fmt$(stats.ev),sub:'expected value',c:stats.ev>=0?'var(--profit)':'var(--loss)'},
-    {l:'Total P&L',v:fmt$(stats.totalPnl),sub:fmtP(stats.totalPnl/PORT_SIZE)+' return',c:stats.totalPnl>=0?'var(--profit)':'var(--loss)',full:true},
+    {l:'Total P&L',v:'<span class="privacy-val">'+fmt$(stats.totalPnl)+'</span>',sub:fmtP(stats.totalPnl/PORT_SIZE)+' return',c:stats.totalPnl>=0?'var(--profit)':'var(--loss)',full:true},
     {l:'Ort. Elde Tutma',v:(function(){var h=calcAvgHoldDays(closed);return h!==null?h+' gün':'—';})(),sub:'CSP/PCS/IC/CC/PMCC',c:'var(--purple)',full:true},
     (function(){
       var SPREAD=['CSP','PCS','IC'];
