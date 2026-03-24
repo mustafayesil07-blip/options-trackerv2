@@ -45,6 +45,9 @@
     --radius-xs: 6px;
   }
 
+
+  /* Privacy mode */
+  body.privacy-mode .privacy-val { filter: blur(6px); user-select: none; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html { font-size: 16px; scroll-behavior: smooth; }
 
@@ -681,11 +684,10 @@
     <span class="topbar-name">OptionFlow</span>
   </div>
   <div class="topbar-right">
-    <div class="badge-live">LIVE</div>
+    <button id="privacyBtn" onclick="togglePrivacy()" title="Tutarları gizle" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:5px 9px;color:#6B5A4A;font-size:13px;cursor:pointer">👁</button>
     <button id="priceRefreshBtn" onclick="fetchOptionPrices()" style="background:rgba(16,212,142,0.12);border:1px solid rgba(16,212,142,0.22);border-radius:8px;padding:5px 11px;color:#10D48E;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📡 Fiyat</button>
     <button id="notifBtn" onclick="toggleNotifications()" title="Strike yaklasma bildirimleri" style="background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.20);border-radius:8px;padding:5px 9px;color:#9A8472;font-size:13px;cursor:pointer">🔔</button>
     <button id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="Otomatik yenileme" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:5px 9px;color:#6B5A4A;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#9201;</button>
-    <div class="topbar-avatar">M</div>
   </div>
 </header>
 
@@ -704,7 +706,7 @@
   <div class="hero-strip">
     <div class="hero-card" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(180,130,80,0.12),rgba(120,90,60,0.08));border-color:rgba(180,130,80,0.2);">
       <div class="hero-label" id="heroPnlLabel">Total P&L — YTD</div>
-      <div class="hero-val" id="heroPnl">—</div>
+      <div class="hero-val privacy-val" id="heroPnl">—</div>
       <div class="hero-change" id="heroPnlChange"></div>
     </div>
     <div class="hero-card">
@@ -721,19 +723,19 @@
       <div class="hero-label">Açık Pozisyon Primleri</div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <div>
-          <div class="hero-val" id="heroOpenPrem" style="color:var(--info)">—</div>
+          <div class="hero-val privacy-val" id="heroOpenPrem" style="color:var(--info)">—</div>
           <div class="hero-change" id="heroOpenPremSub" style="margin-top:6px;"></div>
         </div>
         <div style="text-align:right;">
           <div style="font-size:10px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">Toplam Prim</div>
-          <div class="hero-val" id="heroOpenPremTotal" style="font-size:20px;color:var(--purple)">—</div>
+          <div class="hero-val privacy-val" id="heroOpenPremTotal" style="font-size:20px;color:var(--purple)">—</div>
         </div>
       </div>
     </div>
     <div class="hero-card" style="grid-column:1/-1;">
       <div class="hero-label">Collateral In Use</div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;">
-        <div><div class="hero-val" id="heroCollateral">—</div><div class="hero-change" id="heroCollateralSub" style="margin-top:8px;"></div></div>
+        <div><div class="hero-val privacy-val" id="heroCollateral">—</div><div class="hero-change" id="heroCollateralSub" style="margin-top:8px;"></div></div>
         <div style="text-align:right;"><div class="hero-val" id="heroCollPct" style="font-size:22px;color:var(--warn);">—</div><div style="font-size:10px;color:var(--text-3);margin-top:3px;">usage</div></div>
       </div>
       <div style="margin-top:12px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div id="collBarFill" style="width:0%;height:100%;background:linear-gradient(90deg,var(--info),var(--warn));border-radius:3px;transition:width 0.8s ease;"></div></div>
@@ -1293,6 +1295,13 @@ function showDeleteConfirm(onConfirm){
 }
 // ─────────────────────────────────────────────────────────
 
+
+var _privacyOn = false;
+function togglePrivacy() {
+  _privacyOn = !_privacyOn;
+  document.body.classList.toggle('privacy-mode', _privacyOn);
+  document.getElementById('privacyBtn').textContent = _privacyOn ? '🙈' : '👁';
+}
 var PLAN_LS = 'planned_v1';
 var LS_STOCK_PRICES = 'optflow_prices_v1';
 var LS_PREPOST = 'optflow_prepost_v1';
@@ -1981,9 +1990,8 @@ function renderTradeList(filter, month){
             var _extPL=null,_extPctL=null,_extLblL='';
             if(_msL==='PRE'&&_ppL.preMarketPrice){_extPL=_ppL.preMarketPrice;_extPctL=_ppL.preMarketChangePct;_extLblL='Pre';}
             else if((_msL==='POST'||_msL==='POSTPOST')&&_ppL.postMarketPrice){_extPL=_ppL.postMarketPrice;_extPctL=_ppL.postMarketChangePct;_extLblL='Post';}
-            else if(_ppL.preMarketPrice){_extPL=_ppL.preMarketPrice;_extPctL=_ppL.preMarketChangePct;_extLblL='Pre';}
-            else if(_ppL.postMarketPrice){_extPL=_ppL.postMarketPrice;_extPctL=_ppL.postMarketChangePct;_extLblL='Post';}
-            var _extColorL=_extPctL!=null?(_extPctL>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
+            // Only show pre/post during actual extended hours (not during regular market)
+            var _extColorL='var(--text-3)';
             var _stk=parseFloat(t.strike);
             var _shortPuts=['CSP','PCS','COLLAR PUT'];
             var _shortCalls=['CC','PMCC','HEDGE','COLLAR CALL'];
@@ -2092,7 +2100,7 @@ function renderTradeList(filter, month){
   var _showP=_sp,_showLbl='',_showPct=null;
   if((_ms2==='PRE'||_ms2==='PREPRE')&&_pp2.preMarketPrice!=null){_showP=_pp2.preMarketPrice;_showPct=_pp2.preMarketChangePct;_showLbl='PRE';}
   else if((_ms2==='POST'||_ms2==='POSTPOST'||_ms2==='CLOSED')&&_pp2.postMarketPrice!=null){_showP=_pp2.postMarketPrice;_showPct=_pp2.postMarketChangePct;_showLbl='POST';}
-  var _showColor=_showPct!=null?(_showPct>=0?'var(--profit)':'var(--loss)'):'var(--text-3)';
+  var _showColor='var(--text-3)';
   var _stk=parseFloat(t.strike);
   var _sPuts=['CSP','PCS','COLLAR PUT'];
   var _sCalls=['CC','PMCC','HEDGE','COLLAR CALL'];
