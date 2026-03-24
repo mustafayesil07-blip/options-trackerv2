@@ -1,4 +1,4 @@
-const CACHE = 'optflow-v1';
+const CACHE = 'optflow-v2';
 const CORE = ['/', '/index.html'];
 
 // Install — cache core assets
