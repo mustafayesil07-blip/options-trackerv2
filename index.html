@@ -676,6 +676,7 @@
   <div class="topbar-right">
     <div class="badge-live">LIVE</div>
     <button id="priceRefreshBtn" onclick="fetchOptionPrices()" style="background:rgba(16,212,142,0.12);border:1px solid rgba(16,212,142,0.22);border-radius:8px;padding:5px 11px;color:#10D48E;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📡 Fiyat</button>
+    <button id="notifBtn" onclick="toggleNotifications()" title="Strike yaklaşma bildirimleri" style="background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.20);border-radius:8px;padding:5px 9px;color:#9A8472;font-size:13px;cursor:pointer">🔔</button>
     <div class="topbar-avatar">M</div>
   </div>
 </header>
@@ -1229,6 +1230,9 @@ function fetchOptionPrices(){
       _pricesFetching = false;
       saveStockPrices();
       _lastPriceUpdate = new Date();
+      // Check zone alerts for open trades
+      var _openForAlerts = getOpenTrades();
+      checkZoneAlerts(_openForAlerts);
       renderTradeList(currentFilter);
       renderDashboard();
       var total = tickers.length;
@@ -1284,10 +1288,105 @@ function showDeleteConfirm(onConfirm){
 var PLAN_LS = 'planned_v1';
 var LS_STOCK_PRICES = 'optflow_prices_v1';
 var LS_PREPOST = 'optflow_prepost_v1';
+var LS_ZONES = 'optflow_zones_v1';
 var stockPrices = {}; // { 'NVDA': 118.5 }
 var prePostData = {}; // { 'NVDA': { preMarketPrice, preMarketChangePct, postMarketPrice, postMarketChangePct, marketState } }
+var prevZones = {}; // { 'tradeId': 'green'|'amber'|'red'|'itm' } — previous zone state for change detection
 try { var _sp = localStorage.getItem(LS_STOCK_PRICES); if(_sp) stockPrices = JSON.parse(_sp); } catch(e){}
 try { var _pp = localStorage.getItem(LS_PREPOST); if(_pp) prePostData = JSON.parse(_pp); } catch(e){}
+try { var _pz = localStorage.getItem(LS_ZONES); if(_pz) prevZones = JSON.parse(_pz); } catch(e){}
+function saveZones(){ try{ localStorage.setItem(LS_ZONES, JSON.stringify(prevZones)); }catch(e){} }
+
+// ── NOTIFICATION SYSTEM ──────────────────────────────────────────────
+var _notifEnabled = false;
+
+function requestNotifPermission(cb) {
+  if (!('Notification' in window)) { if(cb) cb(false); return; }
+  if (Notification.permission === 'granted') { _notifEnabled = true; if(cb) cb(true); return; }
+  if (Notification.permission === 'denied') { if(cb) cb(false); return; }
+  Notification.requestPermission().then(function(p) {
+    _notifEnabled = p === 'granted';
+    if(cb) cb(_notifEnabled);
+  });
+}
+
+function sendNotif(title, body, tag) {
+  if (!_notifEnabled || Notification.permission !== 'granted') return;
+  try {
+    var n = new Notification(title, {
+      body: body,
+      tag: tag || 'optflow',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%233D3530"/><text x="16" y="22" text-anchor="middle" font-size="18" font-family="sans-serif">📊</text></svg>',
+      requireInteraction: false,
+    });
+    setTimeout(function(){ n.close(); }, 8000);
+  } catch(e) {}
+}
+
+// Compute zone name from distance %
+function distToZone(dist) {
+  if (dist === null) return null;
+  if (dist < 0)  return 'itm';
+  if (dist < 3)  return 'red';
+  if (dist < 6)  return 'amber';
+  return 'green';
+}
+
+// Compute distance % for a trade given spot price
+function getTradeDistPct(trade, spot) {
+  if (!spot || spot <= 0) return null;
+  var stk = parseFloat(trade.strike);
+  if (isNaN(stk)) return null;
+  var type = (trade.type || '').toUpperCase();
+  var isShortPut  = type === 'CSP' || type === 'PCS';
+  var isShortCall = type === 'CC'  || type === 'PMCC';
+  if (type === 'IC') {
+    // Iron condor: two strikes "260/330" — use nearest
+    var parts = trade.strike.split('/');
+    if (parts.length === 2) {
+      var dP = (spot - parseFloat(parts[0])) / spot * 100;
+      var dC = (parseFloat(parts[1]) - spot) / spot * 100;
+      return Math.min(dP, dC);
+    }
+  }
+  if (isShortPut)  return (spot - stk) / spot * 100;
+  if (isShortCall) return (stk - spot) / spot * 100;
+  return null;
+}
+
+// Check all open trades for zone changes and fire notifications
+function checkZoneAlerts(openTrades) {
+  if (!_notifEnabled) return;
+  var changed = false;
+  openTrades.forEach(function(t) {
+    var spot = stockPrices[t.ticker];
+    if (!spot) return;
+    var dist = getTradeDistPct(t, spot);
+    var zone = distToZone(dist);
+    if (!zone) return;
+    var key = String(t.id);
+    var prev = prevZones[key];
+    if (prev && prev !== zone) {
+      // Zone changed — notify on dangerous transitions
+      var title = '', body = '';
+      var stk = t.strike + ' ' + t.type;
+      if (prev === 'green' && zone === 'amber') {
+        title = '⚠️ ' + t.ticker + ' — Amber Bölge';
+        body  = t.ticker + ' ' + stk + ' | Spot $' + spot.toFixed(2) + ' — Strike %' + Math.abs(dist).toFixed(1) + ' kaldi - 6pct alti';
+      } else if (prev === 'amber' && (zone === 'red' || zone === 'itm')) {
+        title = '🔴 ' + t.ticker + ' — Kırmızı Bölge!';
+        body  = t.ticker + ' ' + stk + ' | Spot $' + spot.toFixed(2) + ' — Strike %' + Math.abs(dist).toFixed(1) + ' kaldi - aksiyon gerekebilir!';
+      } else if (zone === 'itm' && prev !== 'itm') {
+        title = '🚨 ' + t.ticker + ' — ITM GİRDİ!';
+        body  = t.ticker + ' ' + stk + ' | Spot $' + spot.toFixed(2) + ' — Strike kirildi! Hemen kontrol et.';
+      }
+      if (title) sendNotif(title, body, 'zone-' + key);
+    }
+    prevZones[key] = zone;
+    changed = true;
+  });
+  if (changed) saveZones();
+}
 function saveStockPrices(){
   try{ localStorage.setItem(LS_STOCK_PRICES, JSON.stringify(stockPrices)); }catch(e){}
   try{ localStorage.setItem(LS_PREPOST, JSON.stringify(prePostData)); }catch(e){}
@@ -3375,9 +3474,55 @@ function switchScreen(name){
 
 
 
+// ── Notification toggle ──────────────────────────────────────────
+function updateNotifBtn() {
+  var btn = document.getElementById('notifBtn');
+  if (!btn) return;
+  if (!('Notification' in window)) { btn.style.display='none'; return; }
+  if (Notification.permission === 'granted' && _notifEnabled) {
+    btn.textContent = '🔔';
+    btn.style.color = '#F59E0B';
+    btn.style.background = 'rgba(245,158,11,0.18)';
+    btn.style.borderColor = 'rgba(245,158,11,0.35)';
+    btn.title = 'Bildirimler ACIK — kapat';
+  } else if (Notification.permission === 'denied') {
+    btn.textContent = '🔕';
+    btn.style.color = '#6B5A4A';
+    btn.title = 'Bildirimler engellendi (tarayici ayarindan ac)';
+  } else {
+    btn.textContent = '🔔';
+    btn.style.color = '#9A8472';
+    btn.style.background = 'rgba(245,158,11,0.08)';
+    btn.title = 'Bildirim izni ver — strike yaklasinca uyar';
+  }
+}
+
+function toggleNotifications() {
+  if (!('Notification' in window)) {
+    alert('Tarayıcınız bildirimleri desteklemiyor.');
+    return;
+  }
+  if (Notification.permission === 'granted' && _notifEnabled) {
+    _notifEnabled = false;
+    updateNotifBtn();
+    return;
+  }
+  requestNotifPermission(function(ok) {
+    updateNotifBtn();
+    if (ok) {
+      sendNotif('✅ OptionFlow Bildirimleri Açık',
+        'Strike yaklaşma bildirimleri aktif. Yeşil→Amber ve Amber→Kırmızı geçişlerinde uyarı alacaksınız.',
+        'optflow-welcome');
+    } else {
+      alert('Bildirim izni verilmedi. Tarayıcı adres çubuğundaki kilit simgesinden site izinlerini açın.');
+    }
+  });
+}
+
 // ═══════════════════ INIT ═══════════════════
 renderDashboard();
 renderTradeList('all');
+// Auto-request notification permission after first price fetch? No — user must click bell.
 
 function editPortSize(){
   var cur = PORT_SIZE || 180000;
@@ -3404,6 +3549,7 @@ function editPortSize(){
     try { localStorage.setItem('temH', val); } catch(e2){}
     ov.remove();
     renderDashboard();
+updateNotifBtn();
   };
   ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
 }
