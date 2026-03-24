@@ -3814,6 +3814,16 @@ if ('serviceWorker' in navigator) {
         scope: '/option-flow/'
       });
 
+      // SW aktif olana kadar bekle
+      await new Promise((resolve) => {
+        if (swReg.active) return resolve();
+        const sw = swReg.installing || swReg.waiting;
+        if (!sw) return resolve();
+        sw.addEventListener('statechange', (e) => {
+          if (e.target.state === 'activated') resolve();
+        });
+      });
+
       const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
       if (token) {
         console.info('[FCM] Token:', token);
