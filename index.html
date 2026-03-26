@@ -746,7 +746,7 @@
     <div class="filter-pill" data-dash-month="Mart" onclick="setDashMonth(this,'Mart')">Mart</div>
   </div>
   <div class="hero-strip">
-    <div id="nlvCard" class="nlv-card" style="display:none;">
+    <div id="nlvCard" class="nlv-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div class="nlv-label">Net Liquidation Value</div>
         <button class="nlv-edit-btn" onclick="openNlvModal()">✎ Başlangıç</button>
@@ -4140,8 +4140,15 @@ function updateNlvCard() {
   loadNlv();
 
   // NLV kartı sadece başlangıç değeri girilmişse göster
-  if(NLV_START <= 0) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
+  if(NLV_START <= 0) {
+    var usdEl2 = document.getElementById('nlvUsd');
+    var tryEl2 = document.getElementById('nlvTry');
+    var subEl2 = document.getElementById('nlvSub');
+    if(usdEl2) { usdEl2.textContent = '—'; usdEl2.style.color = 'var(--text-3)'; }
+    if(tryEl2) { tryEl2.textContent = 'Başlangıç değeri girilmemiş'; tryEl2.style.color = 'var(--text-3)'; }
+    if(subEl2) subEl2.textContent = '✎ Başlangıç butonuna basarak USD değerini girin';
+    return;
+  }
 
   // Tüm kapatılmış trade'lerin toplam PnL'i
   var allClosed = getAllTrades().filter(function(t){ return t.closed && t.pnl != null; });
