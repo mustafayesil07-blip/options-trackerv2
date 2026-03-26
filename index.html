@@ -4003,12 +4003,15 @@ function selectProfile(profile) {
 }
 
 function reloadProfileData() {
-  // tradesData
+  // tradesData — Mustafa dışındaki profiller boş başlar
   try {
     var _d = localStorage.getItem(LS);
     if(_d) { tradesData = JSON.parse(_d); }
-    else { tradesData = JSON.parse(JSON.stringify(SEED)); }
-  } catch(e) { tradesData = JSON.parse(JSON.stringify(SEED)); }
+    else if(ACTIVE_PROFILE === 'mustafa') { tradesData = JSON.parse(JSON.stringify(SEED)); }
+    else { tradesData = {}; }
+  } catch(e) {
+    tradesData = (ACTIVE_PROFILE === 'mustafa') ? JSON.parse(JSON.stringify(SEED)) : {};
+  }
 
   // leapsData
   try { var _l = localStorage.getItem(LEAPS_LS); leapsData = _l ? JSON.parse(_l) : []; } catch(e) { leapsData = []; }
