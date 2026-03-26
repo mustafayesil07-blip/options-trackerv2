@@ -3599,7 +3599,7 @@ function stopAutoRefresh() {
 
 function toggleAutoRefresh() {
   _autoRefreshEnabled = !_autoRefreshEnabled;
-  try { localStorage.setItem('optflow_autorefresh', _autoRefreshEnabled ? '1' : '0'); } catch(e) {}
+  try { localStorage.setItem(profileKey('optflow_autorefresh'), _autoRefreshEnabled ? '1' : '0'); } catch(e) {}
   if (_autoRefreshEnabled) {
     startAutoRefresh();
   } else {
@@ -3664,7 +3664,7 @@ function editPortSize(){
     var val = parseInt(inp.value)||0;
     if(val < 1000){ inp.style.borderColor='#ef4444'; return; }
     PORT_SIZE = val;
-    try { localStorage.setItem('temH', val); } catch(e2){}
+    try { localStorage.setItem(profileKey('temH'), val); } catch(e2){}
     ov.remove();
     renderDashboard();
 updateNotifBtn();
@@ -4033,8 +4033,12 @@ function reloadProfileData() {
   // deletedIds
   try { var _di = localStorage.getItem(DELETED_IDS_LS); deletedIds = _di ? JSON.parse(_di) : []; } catch(e) { deletedIds = []; }
 
-  // PORT_SIZE
+  // PORT_SIZE — her profil için bağımsız, yoksa varsayılan 200000
+  PORT_SIZE = 200000;
   try { var _h = localStorage.getItem(profileKey('temH')); if(_h) PORT_SIZE = parseInt(_h); } catch(e){}
+
+  // Auto refresh profil bazlı
+  try { _autoRefreshEnabled = localStorage.getItem(profileKey('optflow_autorefresh')) === '1'; } catch(e){}
 
   // Mevcut ayı otomatik ekle
   var _jsToApp2=['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
