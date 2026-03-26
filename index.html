@@ -3970,6 +3970,8 @@ var ALL_LS_KEYS = {
 };
 
 function profileKey(base) {
+  // Mustafa eski verilerini korumak için prefix kullanmaz
+  if(ACTIVE_PROFILE === 'mustafa') return base;
   return ACTIVE_PROFILE + '_' + base;
 }
 
