@@ -11,6 +11,7 @@ const fcm = admin.messaging();
 const THRESH_WARN  = 6;
 const THRESH_ALERT = 3;
 const DTE_WARN     = 14;
+const NOTIF_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 saat
 
 function getDTE(expiryStr) {
   if (!expiryStr) return null;
@@ -63,10 +64,11 @@ function calcDistance(spot, strikeStr, type) {
 }
 
 async function main() {
-  const doc = await db.collection('optionflow').doc('main').get();
-  if (!doc.exists) { console.log('Firestore belgesi yok.'); return; }
+  const docRef  = db.collection('optionflow').doc('main');
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) { console.log('Firestore belgesi yok.'); return; }
 
-  const { positions = [], token } = doc.data();
+  const { positions = [], token, lastNotified = {} } = docSnap.data();
   if (!token) { console.log('FCM token yok.'); return; }
 
   const open = positions.filter(p => !p.closed);
@@ -81,42 +83,59 @@ async function main() {
     console.log(`${t}: $${price ?? 'N/A'}`);
   }));
 
+  const now           = Date.now();
   const notifications = [];
+  const updatedNotified = { ...lastNotified };
+
+  function shouldNotify(key) {
+    const last = updatedNotified[key];
+    return !last || (now - new Date(last).getTime()) >= NOTIF_COOLDOWN_MS;
+  }
 
   for (const p of open) {
     const ticker = getBaseTicker(p.ticker);
     const spot   = prices[ticker];
     const dte    = getDTE(p.expiry);
 
-    // DTE kontrolü — her çalışmada, eşik altındaysa bildir
+    // DTE kontrolü
     if (dte !== null && dte <= DTE_WARN) {
-      notifications.push({
-        title: `⏰ Vade Yaklaşıyor — ${ticker}`,
-        body:  `${p.type} $${p.strike} | ${dte} gün kaldı (${p.expiry})`,
-      });
+      const key = `${p.id}_dte`;
+      if (shouldNotify(key)) {
+        notifications.push({
+          key,
+          title: `⏰ Vade Yaklaşıyor — ${ticker}`,
+          body:  `${p.type} $${p.strike} | ${dte} gün kaldı (${p.expiry})`,
+        });
+      } else {
+        console.log(`[skip] ${key} — 24 saat içinde zaten bildirildi`);
+      }
     }
 
-    // Mesafe kontrolü — her çalışmada, eşik altındaysa bildir
+    // Mesafe kontrolü
     if (spot && p.strike) {
       const dist = calcDistance(spot, String(p.strike), p.type);
       if (dist !== null) {
-        if (dist <= THRESH_ALERT) {
-          notifications.push({
-            title: `🔴 Kritik — ${ticker} ${p.type}`,
-            body:  `Spot $${spot.toFixed(2)} | Strike $${p.strike} | Mesafe %${dist.toFixed(1)}`,
-          });
-        } else if (dist <= THRESH_WARN) {
-          notifications.push({
-            title: `🟡 Uyarı — ${ticker} ${p.type}`,
-            body:  `Spot $${spot.toFixed(2)} | Strike $${p.strike} | Mesafe %${dist.toFixed(1)}`,
-          });
+        const level = dist <= THRESH_ALERT ? 'alert' : dist <= THRESH_WARN ? 'warn' : null;
+        if (level) {
+          const key = `${p.id}_dist_${level}`;
+          if (shouldNotify(key)) {
+            notifications.push({
+              key,
+              title: level === 'alert'
+                ? `🔴 Kritik — ${ticker} ${p.type}`
+                : `🟡 Uyarı — ${ticker} ${p.type}`,
+              body: `Spot $${spot.toFixed(2)} | Strike $${p.strike} | Mesafe %${dist.toFixed(1)}`,
+            });
+          } else {
+            console.log(`[skip] ${key} — 24 saat içinde zaten bildirildi`);
+          }
         }
       }
     }
   }
 
   if (!notifications.length) {
-    console.log('Tetiklenen koşul yok, bildirim gönderilmedi.');
+    console.log('Tetiklenen koşul yok veya tüm bildirimler cooldown\'da.');
     return;
   }
 
@@ -126,8 +145,12 @@ async function main() {
       notification: { title: n.title, body: n.body },
       android: { priority: 'high' },
     });
+    updatedNotified[n.key] = new Date().toISOString();
     console.log('Gönderildi:', n.title);
   }
+
+  // lastNotified'ı Firestore'a geri yaz
+  await docRef.update({ lastNotified: updatedNotified });
 }
 
 main().catch(console.error);

@@ -1563,7 +1563,8 @@ function saveLeaps() { try { localStorage.setItem(LEAPS_LS, JSON.stringify(leaps
 
 var _fcmToken = null;
 function syncFirestoreIfReady() {
-  if(_fcmToken) syncPositionsToFirestore(_fcmToken);
+  if(window._fcmToken && typeof window.syncPositionsToFirestore === 'function')
+    window.syncPositionsToFirestore(window._fcmToken);
 }
 
 // ── Helpers ──────────────────────────────────────────
@@ -3890,7 +3891,7 @@ if ('serviceWorker' in navigator) {
   import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import { getMessaging, getToken, onMessage }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
-  import { getFirestore, doc, setDoc }
+  import { getFirestore, doc, setDoc, getDoc }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -3907,16 +3908,19 @@ if ('serviceWorker' in navigator) {
   const db        = getFirestore(app);
   const VAPID_KEY = "BDcNMAd0E107KD5mOEBPKV1pMAvGZJv0AK1x7_u2Gq1-ylhCjmxLrgjaMueAILZSDRr6EGJTLduKm9BtgTtQTJw";
 
-  // ── Açık pozisyonları Firestore'a yaz ──────────────────────────────────
+  // ── Pozisyonları + tam veri yedeğini Firestore'a yaz ───────────────────
   async function syncPositionsToFirestore(token) {
     try {
-      // localStorage'dan tüm verileri oku
-      const tradesRaw = localStorage.getItem('opt_v22');
-      const leapsRaw  = localStorage.getItem('leaps_v1');
+      const profile  = window.ACTIVE_PROFILE || 'mustafa';
+      const lsKey    = window.LS       || 'opt_v22';
+      const leapsKey = window.LEAPS_LS || 'leaps_v1';
+
+      const tradesRaw = localStorage.getItem(lsKey);
+      const leapsRaw  = localStorage.getItem(leapsKey);
       const tradesData = tradesRaw ? JSON.parse(tradesRaw) : {};
       const leapsData  = leapsRaw  ? JSON.parse(leapsRaw)  : [];
 
-      // Açık trade pozisyonlarını topla
+      // Açık trade pozisyonlarını topla (check.js için)
       const openTrades = [];
       Object.values(tradesData).forEach(month => {
         month.forEach(t => {
@@ -3935,18 +3939,56 @@ if ('serviceWorker' in navigator) {
         });
       });
 
-      // Firestore'a kaydet
+      // Ana doc (check.js bunu okur)
       await setDoc(doc(db, 'optionflow', 'main'), {
-        positions:   openTrades,
-        token:       token,
-        updatedAt:   new Date().toISOString()
+        positions: openTrades,
+        token:     token,
+        updatedAt: new Date().toISOString()
       });
 
-      console.info('[FCM] Firestore senkronize edildi:', openTrades.length, 'açık pozisyon');
+      // Profil başına tam yedek
+      const pfx = profile === 'mustafa' ? '' : profile + '_';
+      await setDoc(doc(db, 'optionflow', 'backup_' + profile), {
+        trades:   localStorage.getItem(lsKey)                          || null,
+        leaps:    localStorage.getItem(leapsKey)                       || null,
+        kurlar:   localStorage.getItem('kurlar_v2')                    || null,
+        tax:      localStorage.getItem(pfx + 'tax_v1')                 || null,
+        planned:  localStorage.getItem(pfx + 'planned_v1')             || null,
+        nlv:      localStorage.getItem(pfx + 'nlv_start')              || null,
+        portSize: localStorage.getItem(pfx + 'temH')                   || null,
+        savedAt:  new Date().toISOString()
+      });
+
+      console.info('[FCM] Firestore senkronize edildi:', openTrades.length, 'açık pozisyon, profil:', profile);
     } catch (err) {
       console.warn('[FCM] Firestore sync hatası:', err.message);
     }
   }
+
+  // ── Firestore yedeğinden localStorage'a geri yükle ─────────────────────
+  async function restoreFromFirestore(profile) {
+    try {
+      const snap = await getDoc(doc(db, 'optionflow', 'backup_' + profile));
+      if (!snap.exists()) return false;
+      const d   = snap.data();
+      const pfx = profile === 'mustafa' ? '' : profile + '_';
+      if (d.trades)   localStorage.setItem(pfx + 'opt_v22',    d.trades);
+      if (d.leaps)    localStorage.setItem(pfx + 'leaps_v1',   d.leaps);
+      if (d.kurlar)   localStorage.setItem('kurlar_v2',         d.kurlar);
+      if (d.tax)      localStorage.setItem(pfx + 'tax_v1',      d.tax);
+      if (d.planned)  localStorage.setItem(pfx + 'planned_v1',  d.planned);
+      if (d.nlv)      localStorage.setItem(pfx + 'nlv_start',   d.nlv);
+      if (d.portSize) localStorage.setItem(pfx + 'temH',        d.portSize);
+      console.info('[Backup] Firestore\'dan geri yüklendi:', profile, '—', d.savedAt);
+      return true;
+    } catch (err) {
+      console.warn('[Backup] Restore hatası:', err.message);
+      return false;
+    }
+  }
+
+  window.syncPositionsToFirestore = syncPositionsToFirestore;
+  window.restoreFromFirestore      = restoreFromFirestore;
 
   // ── Push bildirim izni ve token al ─────────────────────────────────────
   async function initPush() {
@@ -3993,6 +4035,18 @@ if ('serviceWorker' in navigator) {
   if ('Notification' in window && 'serviceWorker' in navigator) {
     setTimeout(initPush, 2000);
   }
+
+  // ── Auto-restore: modül yüklenince localStorage boşsa Firestore'dan geri yükle
+  (async () => {
+    const profile = window.ACTIVE_PROFILE;
+    if (!profile) return;
+    const lsKey = window.LS || (profile === 'mustafa' ? 'opt_v22' : profile + '_opt_v22');
+    if (localStorage.getItem(lsKey)) return; // veri var, gerek yok
+    const ok = await restoreFromFirestore(profile);
+    if (ok && typeof window.reloadProfileData === 'function') {
+      window.reloadProfileData();
+    }
+  })();
 </script>
 
 <script>
@@ -4100,6 +4154,8 @@ function reloadProfileData() {
   switchScreen('dashboard');
   setTimeout(function(){ renderDashboard(); renderTrades(); renderLeaps(); renderVergi(); }, 100);
 }
+
+window.reloadProfileData = reloadProfileData;
 
 function showProfileScreen() {
   document.getElementById('profile-screen').style.display = 'flex';
