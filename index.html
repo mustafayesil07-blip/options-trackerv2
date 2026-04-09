@@ -717,6 +717,12 @@
         <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;color:#F5EDE0;">İkbal</div>
       </button>
     </div>
+    <div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.08);padding-top:20px;">
+      <div style="font-size:11px;color:#8A7A6A;margin-bottom:10px;text-align:center;">Başka cihazda kaydettiğin verileri yükle</div>
+      <button id="firestoreRestoreBtn" onclick="manualRestoreFromFirestore()" style="width:100%;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:13px;color:#3B82F6;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">
+        ☁ Firestore'dan Yükle
+      </button>
+    </div>
   </div>
 </div>
 <header class="topbar">
@@ -4215,6 +4221,29 @@ window.reloadProfileData = reloadProfileData;
 
 function showProfileScreen() {
   document.getElementById('profile-screen').style.display = 'flex';
+}
+
+function manualRestoreFromFirestore() {
+  if (!ACTIVE_PROFILE) { alert('Önce bir profil seçin.'); return; }
+  if (typeof window.restoreFromFirestore !== 'function') {
+    alert('Firestore henüz hazır değil, birkaç saniye sonra tekrar deneyin.');
+    return;
+  }
+  var btn = document.getElementById('firestoreRestoreBtn');
+  if (btn) { btn.textContent = '⏳ Yükleniyor…'; btn.disabled = true; }
+  window.restoreFromFirestore(ACTIVE_PROFILE).then(function(ok) {
+    if (ok) {
+      if (btn) { btn.textContent = '✓ Yüklendi!'; }
+      document.getElementById('profile-screen').style.display = 'none';
+      reloadProfileData();
+    } else {
+      if (btn) { btn.textContent = '☁ Firestore'dan Yükle'; btn.disabled = false; }
+      alert('Firestore\'da bu profil için yedek bulunamadı.');
+    }
+  }).catch(function() {
+    if (btn) { btn.textContent = '☁ Firestore\'dan Yükle'; btn.disabled = false; }
+    alert('Bağlantı hatası. İnternet bağlantınızı kontrol edin.');
+  });
 }
 
 // Sayfa açılışında profil seç
