@@ -1,8 +1,51 @@
-const CACHE     = 'optflow-v6';
-const CDN_CACHE = 'optflow-cdn-v1';
+// Firebase Messaging — background push (compat scripts önce gelmeli)
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Firebase API çağrıları — asla cache'leme
-const FIREBASE_API = [
+firebase.initializeApp({
+  apiKey:            "AIzaSyDQQ7GlZ0j6kR_FSTSN06RRGdxY5GMHrHs",
+  authDomain:        "optionflow-ef59d.firebaseapp.com",
+  projectId:         "optionflow-ef59d",
+  storageBucket:     "optionflow-ef59d.firebasestorage.app",
+  messagingSenderId: "977067075912",
+  appId:             "1:977067075912:web:3732b70b3343fd4c906b7d"
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage(function(payload) {
+  var title = (payload.notification && payload.notification.title) || 'OptionFlow';
+  var body  = (payload.notification && payload.notification.body)  || '';
+  self.registration.showNotification(title, {
+    body:    body,
+    icon:    '/option-flow/icon-192.png',
+    badge:   '/option-flow/icon-192.png',
+    data:    payload.data || {},
+    vibrate: [200, 100, 200]
+  });
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  var url = (event.notification.data && event.notification.data.url) || '/option-flow/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url.includes(self.location.origin) && 'focus' in list[i]) {
+          list[i].navigate(url);
+          return list[i].focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
+});
+
+// ── Offline Cache ────────────────────────────────────────────────────────────
+var CACHE     = 'optflow-v7';
+var CDN_CACHE = 'optflow-cdn-v1';
+
+var FIREBASE_API = [
   'firebaseio.com',
   'firestore.googleapis.com',
   'identitytoolkit.googleapis.com',
@@ -11,8 +54,7 @@ const FIREBASE_API = [
   'firebase.googleapis.com'
 ];
 
-// Cache'lenecek CDN domain'leri (statik JS/CSS/font)
-const CDN_HOSTS = [
+var CDN_HOSTS = [
   'cdnjs.cloudflare.com',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
@@ -44,17 +86,16 @@ self.addEventListener('fetch', function(e) {
   if (e.request.method !== 'GET') return;
   var url = new URL(e.request.url);
 
-  // Firebase API çağrıları — service worker'dan geç
+  // Firebase API çağrıları — asla cache'leme
   if (FIREBASE_API.some(function(h) { return url.hostname.endsWith(h); })) return;
 
   var isSameOrigin = url.origin === self.location.origin;
   var isCDN = CDN_HOSTS.indexOf(url.hostname) !== -1;
 
-  // Tanımadığımız dış domain — pas geç
   if (!isSameOrigin && !isCDN) return;
 
   if (isCDN) {
-    // CDN: cache-first (dosyalar nadiren değişir)
+    // CDN: cache-first
     e.respondWith(
       caches.match(e.request).then(function(cached) {
         if (cached) return cached;
