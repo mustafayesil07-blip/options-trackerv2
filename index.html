@@ -717,12 +717,6 @@
         <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;color:#F5EDE0;">İkbal</div>
       </button>
     </div>
-    <div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.08);padding-top:20px;">
-      <div style="font-size:11px;color:#8A7A6A;margin-bottom:10px;text-align:center;">Başka cihazda kaydettiğin verileri yükle</div>
-      <button id="firestoreRestoreBtn" onclick="manualRestoreFromFirestore()" style="width:100%;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:13px;color:#3B82F6;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">
-        ☁ Firestore'dan Yükle
-      </button>
-    </div>
   </div>
 </div>
 <header class="topbar">
@@ -746,6 +740,10 @@
 <div class="screen active" id="screen-dashboard">
   <div class="filter-row" id="dashMonthFilter" style="padding:12px 20px 4px;">
     <div class="filter-pill active" data-dash-month="all" onclick="setDashMonth(this,'all')">Tüm Zamanlar</div>
+    <div class="filter-pill" data-dash-month="Aralik" onclick="setDashMonth(this,'Aralik')">Aralık</div>
+    <div class="filter-pill" data-dash-month="Ocak" onclick="setDashMonth(this,'Ocak')">Ocak</div>
+    <div class="filter-pill" data-dash-month="Subat" onclick="setDashMonth(this,'Subat')">Şubat</div>
+    <div class="filter-pill" data-dash-month="Mart" onclick="setDashMonth(this,'Mart')">Mart</div>
   </div>
   <div class="hero-strip">
     <div id="nlvCard" class="nlv-card">
@@ -870,7 +868,11 @@
     <div class="filter-pill" data-filter="IC">IC</div>
   </div>
   <div class="filter-row" id="monthFilterRow">
-    <div class="filter-pill active" data-month="all">Tüm Aylar</div>
+    <div class="filter-pill active" data-month="all">Tum Aylar</div>
+    <div class="filter-pill" data-month="Aralik">Aralik</div>
+    <div class="filter-pill" data-month="Ocak">Ocak</div>
+    <div class="filter-pill" data-month="Subat">Subat</div>
+    <div class="filter-pill" data-month="Mart">Mart</div>
   </div>
   <div class="trade-list" id="tradeList"></div>
 
@@ -889,8 +891,12 @@
   <div class="section-head">
     <div><div class="section-title">Statistics</div><div class="section-sub" id="statsSub">Loading...</div></div>
   </div>
-  <div class="filter-row" id="statMonthFilter" style="padding:4px 20px 8px;">
+  <div class="filter-row" style="padding:4px 20px 8px;">
     <div class="filter-pill active" data-stat-month="all" onclick="setStatMonth(this,'all')">Tüm Zamanlar</div>
+    <div class="filter-pill" data-stat-month="Aralik" onclick="setStatMonth(this,'Aralik')">Aralık</div>
+    <div class="filter-pill" data-stat-month="Ocak" onclick="setStatMonth(this,'Ocak')">Ocak</div>
+    <div class="filter-pill" data-stat-month="Subat" onclick="setStatMonth(this,'Subat')">Şubat</div>
+    <div class="filter-pill" data-stat-month="Mart" onclick="setStatMonth(this,'Mart')">Mart</div>
   </div>
   <div class="donut-section">
     <div style="font-family:var(--font-head);font-size:14px;font-weight:600;margin-bottom:12px;">Win/Loss Breakdown</div>
@@ -1552,13 +1558,12 @@ try {
 }
 try { var _l = localStorage.getItem(LEAPS_LS); leapsData = _l ? JSON.parse(_l) : []; } catch(e) { leapsData = []; }
 
-function saveData() { try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e){} syncFirestoreIfReady(); if(typeof buildMonthPills==='function') buildMonthPills(); }
+function saveData() { try { localStorage.setItem(LS, JSON.stringify(tradesData)); } catch(e){} syncFirestoreIfReady(); }
 function saveLeaps() { try { localStorage.setItem(LEAPS_LS, JSON.stringify(leapsData)); } catch(e){} syncFirestoreIfReady(); }
 
 var _fcmToken = null;
 function syncFirestoreIfReady() {
-  if(window._fcmToken && typeof window.syncPositionsToFirestore === 'function')
-    window.syncPositionsToFirestore(window._fcmToken);
+  if(_fcmToken) syncPositionsToFirestore(_fcmToken);
 }
 
 // ── Helpers ──────────────────────────────────────────
@@ -1735,85 +1740,6 @@ function setStatMonth(el, month){
   el.classList.add('active');
   currentStatMonth = month;
   renderStats();
-}
-
-// ── Ay pilllerini dinamik oluştur ─────────────────────────────────────────
-var _ALL_MONTHS = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
-var _MONTH_TR   = {
-  'Ocak':'Ocak','Subat':'Şubat','Mart':'Mart','Nisan':'Nisan',
-  'Mayis':'Mayıs','Haziran':'Haziran','Temmuz':'Temmuz','Agustos':'Ağustos',
-  'Eylul':'Eylül','Ekim':'Ekim','Kasim':'Kasım','Aralik':'Aralık'
-};
-
-function buildMonthPills() {
-  var nowIdx    = new Date().getMonth(); // 0=Ocak … 11=Aralik
-  var nowMonth  = _ALL_MONTHS[nowIdx];
-  var dataMonths = {};
-  Object.keys(tradesData || {}).forEach(function(m){ dataMonths[m] = true; });
-  dataMonths[nowMonth] = true;
-
-  // Mevcut aydan geriye doğru sıralı liste (maks 12 ay, sadece verisi olanlar + bu ay)
-  var ordered = [];
-  for (var i = 0; i < 12; i++) {
-    var idx = ((nowIdx - i) % 12 + 12) % 12;
-    var m   = _ALL_MONTHS[idx];
-    if (dataMonths[m]) ordered.push(m);
-  }
-
-  // Dashboard
-  var dashRow = document.getElementById('dashMonthFilter');
-  if (dashRow) {
-    var dashAll = dashRow.querySelector('[data-dash-month="all"]');
-    dashRow.innerHTML = '';
-    if (dashAll) dashRow.appendChild(dashAll);
-    ordered.forEach(function(m) {
-      var p = document.createElement('div');
-      p.className = 'filter-pill' + (currentDashMonth === m ? ' active' : '');
-      p.setAttribute('data-dash-month', m);
-      p.textContent = _MONTH_TR[m] || m;
-      p.onclick = function(){ setDashMonth(p, m); };
-      dashRow.appendChild(p);
-    });
-    if (currentDashMonth !== 'all' && !dataMonths[currentDashMonth]) {
-      dashRow.querySelector('[data-dash-month="all"]').classList.add('active');
-      currentDashMonth = 'all';
-    }
-  }
-
-  // Trades
-  var tradeRow = document.getElementById('monthFilterRow');
-  if (tradeRow) {
-    var tradeAll = tradeRow.querySelector('[data-month="all"]');
-    tradeRow.innerHTML = '';
-    if (tradeAll) tradeRow.appendChild(tradeAll);
-    ordered.forEach(function(m) {
-      var p = document.createElement('div');
-      p.className = 'filter-pill';
-      p.setAttribute('data-month', m);
-      p.textContent = _MONTH_TR[m] || m;
-      tradeRow.appendChild(p);
-    });
-  }
-
-  // Statistics
-  var statRow = document.getElementById('statMonthFilter');
-  if (statRow) {
-    var statAll = statRow.querySelector('[data-stat-month="all"]');
-    statRow.innerHTML = '';
-    if (statAll) statRow.appendChild(statAll);
-    ordered.forEach(function(m) {
-      var p = document.createElement('div');
-      p.className = 'filter-pill' + (currentStatMonth === m ? ' active' : '');
-      p.setAttribute('data-stat-month', m);
-      p.textContent = _MONTH_TR[m] || m;
-      p.onclick = function(){ setStatMonth(p, m); };
-      statRow.appendChild(p);
-    });
-    if (currentStatMonth !== 'all' && !dataMonths[currentStatMonth]) {
-      statRow.querySelector('[data-stat-month="all"]').classList.add('active');
-      currentStatMonth = 'all';
-    }
-  }
 }
 
 function getFilteredTrades(month){
@@ -3964,7 +3890,7 @@ if ('serviceWorker' in navigator) {
   import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import { getMessaging, getToken, onMessage }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
-  import { getFirestore, doc, setDoc, getDoc }
+  import { getFirestore, doc, setDoc }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -3981,19 +3907,16 @@ if ('serviceWorker' in navigator) {
   const db        = getFirestore(app);
   const VAPID_KEY = "BDcNMAd0E107KD5mOEBPKV1pMAvGZJv0AK1x7_u2Gq1-ylhCjmxLrgjaMueAILZSDRr6EGJTLduKm9BtgTtQTJw";
 
-  // ── Pozisyonları + tam veri yedeğini Firestore'a yaz ───────────────────
+  // ── Açık pozisyonları Firestore'a yaz ──────────────────────────────────
   async function syncPositionsToFirestore(token) {
     try {
-      const profile  = window.ACTIVE_PROFILE || 'mustafa';
-      const lsKey    = window.LS       || 'opt_v22';
-      const leapsKey = window.LEAPS_LS || 'leaps_v1';
-
-      const tradesRaw = localStorage.getItem(lsKey);
-      const leapsRaw  = localStorage.getItem(leapsKey);
+      // localStorage'dan tüm verileri oku
+      const tradesRaw = localStorage.getItem('opt_v22');
+      const leapsRaw  = localStorage.getItem('leaps_v1');
       const tradesData = tradesRaw ? JSON.parse(tradesRaw) : {};
       const leapsData  = leapsRaw  ? JSON.parse(leapsRaw)  : [];
 
-      // Açık trade pozisyonlarını topla (check.js için)
+      // Açık trade pozisyonlarını topla
       const openTrades = [];
       Object.values(tradesData).forEach(month => {
         month.forEach(t => {
@@ -4012,56 +3935,18 @@ if ('serviceWorker' in navigator) {
         });
       });
 
-      // Ana doc (check.js bunu okur)
+      // Firestore'a kaydet
       await setDoc(doc(db, 'optionflow', 'main'), {
-        positions: openTrades,
-        token:     token,
-        updatedAt: new Date().toISOString()
+        positions:   openTrades,
+        token:       token,
+        updatedAt:   new Date().toISOString()
       });
 
-      // Profil başına tam yedek
-      const pfx = profile === 'mustafa' ? '' : profile + '_';
-      await setDoc(doc(db, 'optionflow', 'backup_' + profile), {
-        trades:   localStorage.getItem(lsKey)                          || null,
-        leaps:    localStorage.getItem(leapsKey)                       || null,
-        kurlar:   localStorage.getItem('kurlar_v2')                    || null,
-        tax:      localStorage.getItem(pfx + 'tax_v1')                 || null,
-        planned:  localStorage.getItem(pfx + 'planned_v1')             || null,
-        nlv:      localStorage.getItem(pfx + 'nlv_start')              || null,
-        portSize: localStorage.getItem(pfx + 'temH')                   || null,
-        savedAt:  new Date().toISOString()
-      });
-
-      console.info('[FCM] Firestore senkronize edildi:', openTrades.length, 'açık pozisyon, profil:', profile);
+      console.info('[FCM] Firestore senkronize edildi:', openTrades.length, 'açık pozisyon');
     } catch (err) {
       console.warn('[FCM] Firestore sync hatası:', err.message);
     }
   }
-
-  // ── Firestore yedeğinden localStorage'a geri yükle ─────────────────────
-  async function restoreFromFirestore(profile) {
-    try {
-      const snap = await getDoc(doc(db, 'optionflow', 'backup_' + profile));
-      if (!snap.exists()) return false;
-      const d   = snap.data();
-      const pfx = profile === 'mustafa' ? '' : profile + '_';
-      if (d.trades)   localStorage.setItem(pfx + 'opt_v22',    d.trades);
-      if (d.leaps)    localStorage.setItem(pfx + 'leaps_v1',   d.leaps);
-      if (d.kurlar)   localStorage.setItem('kurlar_v2',         d.kurlar);
-      if (d.tax)      localStorage.setItem(pfx + 'tax_v1',      d.tax);
-      if (d.planned)  localStorage.setItem(pfx + 'planned_v1',  d.planned);
-      if (d.nlv)      localStorage.setItem(pfx + 'nlv_start',   d.nlv);
-      if (d.portSize) localStorage.setItem(pfx + 'temH',        d.portSize);
-      console.info('[Backup] Firestore\'dan geri yüklendi:', profile, '—', d.savedAt);
-      return true;
-    } catch (err) {
-      console.warn('[Backup] Restore hatası:', err.message);
-      return false;
-    }
-  }
-
-  window.syncPositionsToFirestore = syncPositionsToFirestore;
-  window.restoreFromFirestore      = restoreFromFirestore;
 
   // ── Push bildirim izni ve token al ─────────────────────────────────────
   async function initPush() {
@@ -4069,13 +3954,24 @@ if ('serviceWorker' in navigator) {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;
 
-      // Tek SW kullan (sw.js hem cache hem messaging içeriyor)
-      const swReg = await navigator.serviceWorker.ready;
+      const swReg = await navigator.serviceWorker.register('/option-flow/firebase-messaging-sw.js', {
+        scope: '/option-flow/'
+      });
+
+      await new Promise((resolve) => {
+        if (swReg.active) return resolve();
+        const sw = swReg.installing || swReg.waiting;
+        if (!sw) return resolve();
+        sw.addEventListener('statechange', (e) => {
+          if (e.target.state === 'activated') resolve();
+        });
+      });
 
       const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
       if (token) {
         console.info('[FCM] Token:', token);
         window._fcmToken = token;
+        // Token alınınca pozisyonları Firestore'a senkronize et
         await syncPositionsToFirestore(token);
       }
     } catch (err) {
@@ -4097,18 +3993,6 @@ if ('serviceWorker' in navigator) {
   if ('Notification' in window && 'serviceWorker' in navigator) {
     setTimeout(initPush, 2000);
   }
-
-  // ── Auto-restore: modül yüklenince localStorage boşsa Firestore'dan geri yükle
-  (async () => {
-    const profile = window.ACTIVE_PROFILE;
-    if (!profile) return;
-    const lsKey = window.LS || (profile === 'mustafa' ? 'opt_v22' : profile + '_opt_v22');
-    if (localStorage.getItem(lsKey)) return; // veri var, gerek yok
-    const ok = await restoreFromFirestore(profile);
-    if (ok && typeof window.reloadProfileData === 'function') {
-      window.reloadProfileData();
-    }
-  })();
 </script>
 
 <script>
@@ -4214,36 +4098,11 @@ function reloadProfileData() {
   if(typeof loadNlv === 'function') loadNlv();
   // Ekranı yenile
   switchScreen('dashboard');
-  setTimeout(function(){ buildMonthPills(); renderDashboard(); renderTrades(); renderLeaps(); renderVergi(); }, 100);
+  setTimeout(function(){ renderDashboard(); renderTrades(); renderLeaps(); renderVergi(); }, 100);
 }
-
-window.reloadProfileData = reloadProfileData;
 
 function showProfileScreen() {
   document.getElementById('profile-screen').style.display = 'flex';
-}
-
-function manualRestoreFromFirestore() {
-  if (!ACTIVE_PROFILE) { alert('Önce bir profil seçin.'); return; }
-  if (typeof window.restoreFromFirestore !== 'function') {
-    alert('Firestore henüz hazır değil, birkaç saniye sonra tekrar deneyin.');
-    return;
-  }
-  var btn = document.getElementById('firestoreRestoreBtn');
-  if (btn) { btn.textContent = '⏳ Yükleniyor…'; btn.disabled = true; }
-  window.restoreFromFirestore(ACTIVE_PROFILE).then(function(ok) {
-    if (ok) {
-      if (btn) { btn.textContent = '✓ Yüklendi!'; }
-      document.getElementById('profile-screen').style.display = 'none';
-      reloadProfileData();
-    } else {
-      if (btn) { btn.textContent = '☁ Firestore'dan Yükle'; btn.disabled = false; }
-      alert('Firestore\'da bu profil için yedek bulunamadı.');
-    }
-  }).catch(function() {
-    if (btn) { btn.textContent = '☁ Firestore\'dan Yükle'; btn.disabled = false; }
-    alert('Bağlantı hatası. İnternet bağlantınızı kontrol edin.');
-  });
 }
 
 // Sayfa açılışında profil seç
