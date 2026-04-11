@@ -1397,7 +1397,7 @@ function distToZone(dist) {
 // Compute distance % for a trade given spot price
 function getTradeDistPct(trade, spot) {
   if (!spot || spot <= 0) return null;
-  var stk = parseFloat(trade.strike);
+  var stk = parseFloat(String(trade.strike).replace(',', '.'));
   if (isNaN(stk)) return null;
   var type = (trade.type || '').toUpperCase();
   var isShortPut  = type === 'CSP' || type === 'PCS';
@@ -2128,7 +2128,7 @@ function renderTradeList(filter, month){
             else if((_msL==='POST'||_msL==='POSTPOST')&&_ppL.postMarketPrice){_extPL=_ppL.postMarketPrice;_extPctL=_ppL.postMarketChangePct;_extLblL='Post';}
             // Only show pre/post during actual extended hours (not during regular market)
             var _extColorL='var(--text-3)';
-            var _stk=parseFloat(t.strike);
+            var _stk=parseFloat(String(t.strike).replace(',', '.'));
             var _shortPuts=['CSP','PCS','COLLAR PUT'];
             var _shortCalls=['CC','PMCC','BCS','HEDGE','COLLAR CALL'];
             var _isIC=t.type==='IC';
@@ -2237,7 +2237,7 @@ function renderTradeList(filter, month){
   if((_ms2==='PRE'||_ms2==='PREPRE')&&_pp2.preMarketPrice!=null){_showP=_pp2.preMarketPrice;_showPct=_pp2.preMarketChangePct;_showLbl='PRE';}
   else if((_ms2==='POST'||_ms2==='POSTPOST'||_ms2==='CLOSED')&&_pp2.postMarketPrice!=null){_showP=_pp2.postMarketPrice;_showPct=_pp2.postMarketChangePct;_showLbl='POST';}
   var _showColor='var(--text-3)';
-  var _stk=parseFloat(t.strike);
+  var _stk=parseFloat(String(t.strike).replace(',', '.'));
   var _sPuts=['CSP','PCS','COLLAR PUT'];
   var _sCalls=['CC','PMCC','BCS','HEDGE','COLLAR CALL'];
   var _isIC = t.type==='IC';
