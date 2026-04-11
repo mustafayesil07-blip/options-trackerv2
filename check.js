@@ -43,7 +43,7 @@ function calcDistance(spot, strikeStr, type) {
     return Math.min(putDist, callDist);
   }
 
-  const strike = parseFloat(str);
+  const strike = parseFloat(str.replace(',', '.'));
   if (isNaN(strike)) return null;
 
   const t = type.toUpperCase();
