@@ -6383,6 +6383,24 @@ function _shotRenderReview(warnings){
          + warnings.slice(0,6).map(function(w){ return '• ' + w; }).join('<br>') + '</div>';
   }
 
+  // Hesap sahibi — Log New Trade ekranindakiyle ayni secim, tum eklenen
+  // islemlere uygulanir (bir ekran goruntusu tek hesaba aittir).
+  var _defOwner = (typeof ACTIVE_PROFILE !== 'undefined' && ACTIVE_PROFILE === 'mustafa') ? 'Mustafa' : 'Eda';
+  html += '<input type="hidden" id="sh_owner" value="' + _defOwner + '">'
+    + '<div style="' + lbl + 'margin-bottom:8px;">Account Owner</div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:16px;">'
+    + ['Mustafa','Eda'].map(function(n){
+        var c = (n === 'Mustafa') ? '#3B82F6' : '#EC4899';
+        var e = (n === 'Mustafa') ? '👨' : '👩';
+        var a = (n === _defOwner);
+        return '<div id="sh_ow_' + n + '" onclick="_shotSetOwner(\'' + n + '\')" '
+          + 'style="flex:1;padding:12px;text-align:center;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;transition:all .15s;'
+          + (a ? ('background:' + c + '33;border:2px solid ' + c + ';color:' + c)
+               : 'background:rgba(255,255,255,0.05);border:2px solid transparent;color:var(--text-3)')
+          + '">' + e + ' ' + n + '</div>';
+      }).join('')
+    + '</div>';
+
   _shotTrades.forEach(function(t, i){
     var okType = !!t.type;
     html += '<div style="background:var(--card);border:1px solid ' + (okType ? 'var(--border)' : 'rgba(245,158,11,.45)') + ';border-radius:12px;padding:12px;margin-bottom:11px;">'
@@ -6420,10 +6438,26 @@ function _shotRenderReview(warnings){
   el.innerHTML = html;
 }
 
+// Onay ekranindaki hesap sahibi secimi
+function _shotSetOwner(name){
+  var h = document.getElementById('sh_owner');
+  if(h) h.value = name;
+  ['Mustafa','Eda'].forEach(function(n){
+    var b = document.getElementById('sh_ow_' + n);
+    if(!b) return;
+    var c = (n === 'Mustafa') ? '#3B82F6' : '#EC4899';
+    var a = (n === name);
+    b.style.background = a ? (c + '33') : 'rgba(255,255,255,0.05)';
+    b.style.border     = a ? ('2px solid ' + c) : '2px solid transparent';
+    b.style.color      = a ? c : 'var(--text-3)';
+  });
+}
+
 function _shotCommit(){
   if(!_shotTrades || !_shotTrades.length) return;
   var _jsToApp = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
   var v = function(id){ var e = document.getElementById(id); return e ? e.value : ''; };
+  var owner = v('sh_owner') || (ACTIVE_PROFILE === 'mustafa' ? 'Mustafa' : 'Eda');
   var added = 0;
 
   _shotTrades.forEach(function(t, i){
@@ -6448,7 +6482,7 @@ function _shotCommit(){
       teminat: parseFloat(v('sh_te_' + i)) || 0,
       openCommission: parseFloat(v('sh_cm_' + i)) || 0,
       delta: null, ivr: null,
-      subOwner: ACTIVE_PROFILE === 'mustafa' ? 'Mustafa' : 'Eda',
+      subOwner: owner,
       note: '[Ekran görüntüsü]',
       month: month
     });
@@ -6460,7 +6494,7 @@ function _shotCommit(){
   var m = document.getElementById('shot-modal'); if(m) m.remove();
   try { if(typeof renderTradeList === 'function') renderTradeList(currentFilter); } catch(e){}
   try { if(typeof renderDashboard === 'function') renderDashboard(); } catch(e){}
-  try { if(typeof _backupToast === 'function') _backupToast('📸 ' + added + ' işlem eklendi', true); } catch(e){}
+  try { if(typeof _backupToast === 'function') _backupToast('📸 ' + added + ' işlem eklendi · ' + owner, true); } catch(e){}
 }
 
 // ── Canvas rounded-rect helper (path only — caller calls fill/stroke)

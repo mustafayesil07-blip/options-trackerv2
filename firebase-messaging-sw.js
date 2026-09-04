@@ -6,7 +6,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-com
 // bunu register ediyor). Depodaki sw.js hicbir yerde kayitli degil —
 // oradaki CACHE surumunu artirmak hicbir sey yapmaz.
 // Yeni surum yayinlarken CACHE degerini burada artirin.
-var CACHE = 'optflow-v31';
+var CACHE = 'optflow-v32';
 
 self.addEventListener('install', function(e) {
   e.waitUntil(
