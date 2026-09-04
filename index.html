@@ -1320,6 +1320,7 @@
     <button onclick="exportCSV()" style="flex:1;min-width:140px;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,.3);border-radius:12px;padding:14px;color:var(--profit);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">&#x1F4CA; Export CSV</button>
     <button onclick="showIBKRImport()" style="flex:1;min-width:140px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px;color:var(--warn);font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;">&#x1F916; IBKR Import</button>
     <button onclick="showSpreadReport()" style="flex:1;min-width:140px;background:rgba(236,72,153,0.10);border:1px solid rgba(236,72,153,.3);border-radius:12px;padding:14px;color:#EC4899;font-family:var(--font-head);font-size:13px;font-weight:600;cursor:pointer;">&#x1F4E3; Spread Raporu</button>
+    <button onclick="showScreenshotImport()" style="flex:1;min-width:140px;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:14px;color:#3B82F6;font-family:var(--font-head);font-size:13px;font-weight:600;cursor:pointer;">&#x1F4F8; Ekran G&#xF6;r&#xFC;nt&#xFC;s&#xFC;</button>
   </div>
   <div id="ibkrImportStatus" style="display:none;margin:0 20px 12px;padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;font-size:13px;color:var(--profit);"></div>
   <div class="filter-row year-row" id="reportYearRow" style="margin:0 0 4px;">
@@ -5955,6 +5956,484 @@ function parseIBKRCsv(csv){
     });
   }
   return { trades: trades };
+}
+
+
+// ═══════════════ EKRAN GÖRÜNTÜSÜNDEN İŞLEM EKLEME ═══════════════
+// IBKR mobil "Orders & Trades" ekranının fotoğrafından bacakları çıkarır,
+// bunları stratejiye göre BİRLEŞTİRİR ve tek trade haline getirir.
+//
+// NEDEN BİRLEŞTİRME: Mevcut IBKR CSV içe aktarması her bacağı ayrı trade
+// yapıyordu; 4 bacaklı bir Iron Condor 4 uyduruk kayda dönüşüyor, teminat
+// 0 kalıyordu. Asıl eksik olan buydu — girdi biçiminden bağımsız.
+
+// Sayı ayrıştırma: hem "1,648.50" (İngiliz) hem "1.648,50" (Türk) biçimi.
+function _ocrNum(s){
+  if(s == null) return NaN;
+  var t = String(s).replace(/[$\s]/g, '');
+  if(!t) return NaN;
+  if(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(t))            t = t.replace(/,/g, '');   // 1,648.50
+  // Turkce binlik AYIRICI yalnizca kesin oldugunda: birden fazla grup
+  // (1.234.567) ya da ardindan virgullu ondalik (1.648,50).
+  // "3.296" TEK gruptur ve IBKR'da 3 ondalikli FIYAT olur — binlik sanilirsa
+  // 3296 okunur ve tutar/fiyat uzlastirmasi komple kayar.
+  else if(/^\d{1,3}(\.\d{3}){2,}$/.test(t) || /^\d{1,3}(\.\d{3})+,\d+$/.test(t))
+                                                       t = t.replace(/\./g,'').replace(',','.');
+  else t = t.replace(',', '.');                                                // 3,296 -> 3.296
+  var n = parseFloat(t);
+  return isFinite(n) ? n : NaN;
+}
+
+var _OCR_MONTHS = { JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12 };
+// Ticker sanilmamasi gereken buyuk harfli belirteçler
+var _OCR_NOT_TICKER = {
+  SOLD:1, BOUGHT:1, CALL:1, PUT:1, LIMIT:1, DAY:1, GTC:1, ALL:1, ACCOUNTS:1,
+  TRADE:1, TRADES:1, ORDERS:1, FILL:1, PRICE:1, AMT:1, COMM:1, RECURRING:1,
+  AI:1, INSTRUCTIONS:1, BATS:1, CBOE:1, CBOE2:1, ISLAND:1, ARCA:1, NASDAQ:1,
+  SMART:1, EDGX:1, BOX:1, MIAX:1, PHLX:1, NYSE:1, AMEX:1, HOME:1, PORTFOLIO:1,
+  WATCHLISTS:1, MARKETS:1, PL:1, USD:1
+};
+Object.keys(_OCR_MONTHS).forEach(function(m){ _OCR_NOT_TICKER[m] = 1; });
+
+// OCR metnindeki her kontrat satırı bir BACAK'tır:
+//   "OCT 16 '26 790 Call"
+// IBKR mobil düzeninde bir bacak şöyle görünür:
+//   SPY BATS+1            3.296     16:52:56   <- ticker + dolum fiyatı (ÜSTTE)
+//   OCT 16 '26 790 Call   $1,648        $0     <- kontrat satırı (çapa)
+//   Sold 5                $1.51               <- yön/adet + komisyon (ALTTA)
+//   3.3 Limit, Day
+// Bu yüzden ticker ÜSTTEN, yön/adet ALTTAN okunur. (İlk sürümde tek bir
+// pencere kullanılıyordu ve bir önceki bacağın "Sold" satırını kapıyordu.)
+function parseScreenshotLegs(rawText){
+  var lines = String(rawText || '').split(/\r?\n/)
+    .map(function(l){ return l.replace(/ /g,' ').trim(); })
+    .filter(function(l){ return l.length > 0; });
+
+  var CONTRACT = /\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+(\d{1,2})\s*[''`]?\s*(\d{2})\s+([\d.,]+)\s*(Call|Put)\b/i;
+  var DATEHDR  = /^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/;
+  var SIDEQTY  = /\b(Sold|Bought|Sat[iı]ld[iı]|Al[iı]nd[iı])\s+(\d+)/i;
+  var BORSA    = /\b(BATS|CBOE|ARCA|EDGX|ISLAND|NASDAQ|SMART|MIAX|PHLX|BOX|NYSE|AMEX|IEX|PEARL|GEMINI)\s*\+?\s*\d*\b/gi;
+
+  // Saat damgalari ve borsa kodlari sayi olarak sizmasin ("BATS+1" -> 1)
+  function clean(l){
+    // "P&L" basligi "P" ve "L" belirtecleri uretip ticker sanilabiliyor.
+    // Tek harfli gercek tickerlari (A, C, F, T) engellememek icin
+    // basligi burada temizliyoruz, kara listeye eklemiyoruz.
+    return String(l).replace(/P\s*&\s*L/gi, ' ')
+                    .replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, ' ')
+                    .replace(BORSA, ' ');
+  }
+  function tokens(str, dollarOnly){
+    var re = dollarOnly ? /\$\s?(\d[\d.,]*)/g : /(?:^|[\s(])\$?\s?(\d[\d.,]*)/g;
+    var out = [], m;
+    while((m = re.exec(str)) !== null){
+      var v = _ocrNum(m[1]);
+      if(isFinite(v) && v > 0) out.push(v);
+    }
+    return out;
+  }
+
+  var anchors = [];
+  lines.forEach(function(l, i){ if(CONTRACT.test(l)) anchors.push(i); });
+  if(!anchors.length) return { legs: [], warnings: ['Ekran görüntüsünde kontrat satırı bulunamadı (ör. "OCT 16 \'26 790 Call").'] };
+
+  function dateAbove(idx){
+    for(var i = idx; i >= 0; i--){
+      var m = lines[i].match(DATEHDR);
+      if(m) return m[3] + '-' + ('0'+m[2]).slice(-2) + '-' + ('0'+m[1]).slice(-2);
+    }
+    return null;
+  }
+
+  var warnings = [];
+  var legs = anchors.map(function(idx, n){
+    // İLERİ pencere: çapadan bir sonraki çapaya kadar (yön/adet, tutar, komisyon)
+    var fwdTo = (n === anchors.length - 1) ? lines.length - 1 : anchors[n+1] - 1;
+    var fwdLines = lines.slice(idx, fwdTo + 1).map(clean);
+    var fwd   = fwdLines.join(' \n ');
+    // GERİ pencere: yalnızca çapanın hemen üstündeki satır(lar) — ticker + dolum fiyatı.
+    // Bir önceki çapayı GEÇMEZ, yoksa önceki bacağın verisi karışır.
+    var backFrom = Math.max(n === 0 ? 0 : anchors[n-1] + 1, idx - 2);
+    var back  = lines.slice(backFrom, idx).map(clean).join(' \n ');
+
+    var cm = lines[idx].match(CONTRACT);
+    var expiry  = '20' + cm[3] + '-' + ('0' + _OCR_MONTHS[cm[1].toUpperCase()]).slice(-2) + '-' + ('0' + cm[2]).slice(-2);
+    var strike  = _ocrNum(cm[4]);
+    var optType = /call/i.test(cm[5]) ? 'C' : 'P';
+
+    // Ticker: çapanın ÜSTÜNDEKİ satırdan, en yakından başlayarak
+    var ticker = null;
+    var tkSource = (back + ' \n ' + fwd);
+    var toks = tkSource.match(/\b[A-Z][A-Z0-9.]{0,5}\b/g) || [];
+    for(var i = 0; i < toks.length; i++){
+      var tk = toks[i].replace(/\.$/, '');
+      if(!_OCR_NOT_TICKER[tk] && !/^\d+$/.test(tk)){ ticker = tk; break; }
+    }
+
+    // Yön/adet: yalnızca İLERİ pencereden
+    var side = null, qty = null, sideLineIdx = -1;
+    for(var si = 0; si < fwdLines.length; si++){
+      var sq = fwdLines[si].match(SIDEQTY);
+      if(sq){
+        side = /sold|sat/i.test(sq[1]) ? 'SELL' : 'BUY';
+        qty  = parseInt(sq[2], 10);
+        sideLineIdx = si;
+        break;
+      }
+    }
+
+    // Sayılar SATIR BAZINDA toplanır — pencerenin tamamından değil.
+    // (Pencere sonu bir sonraki bacağın ticker satırına taşabiliyor ve
+    // onun fiyatı komisyon sanılabiliyordu.)
+    //   tutar    -> kontrat satırı        "OCT 16 '26 790 Call  $1,648"
+    //   fiyat    -> üstteki ticker satırı "SPY BATS+1  3.296"
+    //   komisyon -> Sold/Bought satırı    "Sold 5  $1.51"
+    var anchorNums = tokens(fwdLines[0], false).filter(function(v){
+      return v !== strike && v !== _ocrNum(cm[2]) && v !== _ocrNum('20'+cm[3]) && v !== _ocrNum(cm[3]);
+    });
+    var backNums = tokens(back, false);
+    var commNums = (sideLineIdx >= 0) ? tokens(fwdLines[sideLineIdx], true) : [];
+
+    var price = null, amount = null, comm = null;
+    if(qty){
+      var best = null;
+      anchorNums.forEach(function(a){
+        backNums.concat(anchorNums).forEach(function(b){
+          if(a === b) return;
+          var expected = b * qty * 100;
+          if(expected <= 0) return;
+          var diff = Math.abs(a - expected) / expected;
+          if(diff < 0.02 && (best === null || diff < best.diff)) best = { amount: a, price: b, diff: diff };
+        });
+      });
+      if(best){ amount = best.amount; price = best.price; }
+    }
+    if(amount === null && qty && anchorNums.length){
+      var mx = Math.max.apply(null, anchorNums);
+      if(isFinite(mx)){ amount = mx; price = mx / (qty * 100); }
+    }
+    var commCands = commNums.filter(function(v){ return v !== qty && v > 0 && v < 100; });
+    if(commCands.length) comm = Math.min.apply(null, commCands);
+
+    var leg = {
+      ticker: ticker, expiry: expiry, strike: strike, optType: optType,
+      side: side, qty: qty, price: price, amount: amount,
+      comm: comm || 0, date: dateAbove(idx), raw: lines[idx]
+    };
+    if(!ticker) warnings.push('"' + lines[idx] + '" için ticker okunamadı.');
+    if(!side)   warnings.push('"' + lines[idx] + '" için Sold/Bought okunamadı.');
+    if(!qty)    warnings.push('"' + lines[idx] + '" için adet okunamadı.');
+    if(!amount) warnings.push('"' + lines[idx] + '" için tutar okunamadı.');
+    return leg;
+  });
+
+  return { legs: legs, warnings: warnings };
+}
+
+// Bacakları ticker + vade + işlem tarihine göre gruplayıp stratejiyi tanır.
+function groupLegsIntoTrades(legs){
+  var groups = {};
+  legs.forEach(function(l){
+    var k = (l.ticker || '?') + '|' + (l.expiry || '?') + '|' + (l.date || '?');
+    (groups[k] = groups[k] || []).push(l);
+  });
+
+  return Object.keys(groups).map(function(k){
+    var g = groups[k];
+    var sells = g.filter(function(l){ return l.side === 'SELL'; });
+    var buys  = g.filter(function(l){ return l.side === 'BUY'; });
+    var puts  = g.filter(function(l){ return l.optType === 'P'; });
+    var calls = g.filter(function(l){ return l.optType === 'C'; });
+
+    var sum = function(arr){ return arr.reduce(function(s,l){ return s + (l.amount || 0); }, 0); };
+    var netCredit = sum(sells) - sum(buys);
+    var qty = g.reduce(function(m,l){ return Math.min(m, l.qty || 1); }, Infinity);
+    if(!isFinite(qty)) qty = 1;
+    var comm = g.reduce(function(s,l){ return s + (l.comm || 0); }, 0);
+
+    var type = null, strike = null, collateral = 0, note = '';
+
+    if(g.length === 1){
+      var one = g[0];
+      type = one.side === 'SELL' ? (one.optType === 'P' ? 'CSP' : 'CC')
+                                 : (one.optType === 'P' ? 'Long Put' : 'Long Call');
+      strike = String(one.strike);
+      collateral = (one.side === 'SELL') ? one.strike * 100 * qty : 0;
+    } else if(g.length === 2 && puts.length === 2 && sells.length === 1 && buys.length === 1){
+      // Put dikey: satilan strike ALTTAKI'nden yuksekse kredi spread'i (PCS)
+      if(sells[0].strike > buys[0].strike){
+        type = 'PCS'; strike = String(sells[0].strike);
+        collateral = Math.abs(sells[0].strike - buys[0].strike) * 100 * qty;
+      } else { note = 'Borç put spread — uygulamada karşılığı yok'; }
+    } else if(g.length === 2 && calls.length === 2 && sells.length === 1 && buys.length === 1){
+      // Call dikey: satilan strike USTTEKI'nden dusukse kredi spread'i (BCS)
+      if(sells[0].strike < buys[0].strike){
+        type = 'BCS'; strike = String(sells[0].strike);
+        collateral = Math.abs(buys[0].strike - sells[0].strike) * 100 * qty;
+      } else { note = 'Borç call spread — uygulamada karşılığı yok'; }
+    } else if(g.length === 4 && puts.length === 2 && calls.length === 2 &&
+              sells.length === 2 && buys.length === 2 && netCredit > 0){
+      var sp = puts.filter(function(l){ return l.side === 'SELL'; })[0];
+      var bp = puts.filter(function(l){ return l.side === 'BUY';  })[0];
+      var sc = calls.filter(function(l){ return l.side === 'SELL'; })[0];
+      var bc = calls.filter(function(l){ return l.side === 'BUY';  })[0];
+      if(sp && bp && sc && bc){
+        type = 'IC';
+        strike = String(sp.strike) + '/' + String(sc.strike);   // put/call — uygulamanın IC biçimi
+        var putW = Math.abs(sp.strike - bp.strike), callW = Math.abs(bc.strike - sc.strike);
+        collateral = Math.max(putW, callW) * 100 * qty;         // IC'de yalnız bir taraf zarar eder
+      }
+    }
+    if(!type) note = note || 'Strateji tanınamadı (' + g.length + ' bacak) — bacaklar ayrı ayrı eklenebilir';
+
+    return {
+      ticker: g[0].ticker, type: type, strike: strike,
+      expiry: g[0].expiry, opened: g[0].date,
+      q: qty, openPremium: Math.round(Math.abs(netCredit) * 100) / 100,
+      teminat: Math.round(collateral), openCommission: Math.round(comm * 100) / 100,
+      netCredit: Math.round(netCredit * 100) / 100,
+      legs: g, note: note
+    };
+  });
+}
+
+
+// ── Tesseract.js tembel yükleme ──────────────────────────────────────────
+// Kütüphane ~3 MB; yalnızca kullanıcı ekran görüntüsü seçtiğinde indiriliyor.
+var _tessPromise = null;
+function _loadTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(_tessPromise) return _tessPromise;
+  _tessPromise = new Promise(function(resolve, reject){
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload  = function(){ window.Tesseract ? resolve(window.Tesseract) : reject(new Error('Tesseract yüklendi ama başlatılamadı')); };
+    s.onerror = function(){ _tessPromise = null; reject(new Error('OCR kütüphanesi indirilemedi (internet/CDN)')); };
+    document.head.appendChild(s);
+  });
+  return _tessPromise;
+}
+
+// Koyu temalı ekran görüntüsünü OCR için hazırla: 2× büyüt, gri tonla,
+// TERSİNE ÇEVİR. Tesseract koyu zemin üzerine açık yazıda belirgin biçimde
+// daha kötü sonuç veriyor.
+function _ocrPreprocess(file){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function(){
+      try {
+        var sc = Math.min(2, 2200 / Math.max(img.width, 1));
+        if(!isFinite(sc) || sc < 1) sc = 1;
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * sc);
+        cv.height = Math.round(img.height * sc);
+        var c = cv.getContext('2d');
+        c.drawImage(img, 0, 0, cv.width, cv.height);
+        var d = c.getImageData(0, 0, cv.width, cv.height);
+        var px = d.data, dark = 0;
+        for(var i = 0; i < px.length; i += 4){
+          var g = (px[i]*0.299 + px[i+1]*0.587 + px[i+2]*0.114);
+          if(g < 128) dark++;
+          px[i] = px[i+1] = px[i+2] = g;
+        }
+        // Görselin çoğu koyuysa tersine çevir (koyu tema)
+        if(dark > (px.length / 4) * 0.55){
+          for(var j = 0; j < px.length; j += 4){
+            px[j] = 255 - px[j]; px[j+1] = 255 - px[j+1]; px[j+2] = 255 - px[j+2];
+          }
+        }
+        c.putImageData(d, 0, 0);
+        URL.revokeObjectURL(url);
+        cv.toBlob(function(b){ b ? resolve(b) : reject(new Error('Görsel hazırlanamadı')); }, 'image/png');
+      } catch(e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Görsel okunamadı')); };
+    img.src = url;
+  });
+}
+
+// ── Ekran görüntüsü içe aktarma ekranı ───────────────────────────────────
+var _shotTrades = null;
+
+function showScreenshotImport(){
+  var old = document.getElementById('shot-modal'); if(old) old.remove();
+  var ov = document.createElement('div');
+  ov.id = 'shot-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.82);backdrop-filter:blur(8px);overflow-y:auto;';
+  var box = document.createElement('div');
+  box.style.cssText = 'max-width:560px;margin:20px auto 40px;background:var(--bg2);border:1px solid var(--border-bright);border-radius:18px;overflow:hidden;';
+  ov.appendChild(box);
+
+  box.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(59,130,246,0.12),rgba(139,92,246,0.08));">'
+    + '<div><div style="font-size:17px;font-weight:700;font-family:var(--font-head);color:var(--text);">📸 Ekran Görüntüsünden İşlem</div>'
+    + '<div style="font-size:11px;color:var(--text-3);margin-top:2px;">IBKR "Orders &amp; Trades" ekranı · bacaklar otomatik birleştirilir</div></div>'
+    + '<button onclick="document.getElementById(\'shot-modal\').remove()" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.08);border:none;color:var(--text-2);font-size:17px;cursor:pointer;">&times;</button>'
+    + '</div>'
+    + '<div style="padding:16px 18px;">'
+    +   '<input id="shot_file" type="file" accept="image/*" style="display:none">'
+    +   '<button onclick="document.getElementById(\'shot_file\').click()" style="width:100%;padding:15px;border-radius:12px;border:1.5px dashed rgba(59,130,246,.45);background:rgba(59,130,246,.10);color:#3B82F6;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">'
+    +     '🖼️ Ekran görüntüsü seç</button>'
+    +   '<div id="shot_status" style="font-size:12px;color:var(--text-3);margin-top:10px;line-height:1.6;"></div>'
+    +   '<details style="margin-top:12px;">'
+    +     '<summary style="font-size:11px;color:var(--text-3);cursor:pointer;">OCR çalışmazsa: metni elle yapıştır</summary>'
+    +     '<textarea id="shot_text" placeholder="Ekrandaki yazıyı buraya yapıştır..." style="width:100%;height:110px;margin-top:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:9px;padding:9px;color:var(--text);font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical;"></textarea>'
+    +     '<button onclick="_shotParseText()" style="width:100%;margin-top:7px;padding:10px;border-radius:9px;border:1px solid var(--border-bright);background:rgba(255,255,255,0.06);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Metni çözümle</button>'
+    +   '</details>'
+    + '</div>'
+    + '<div id="shot_review" style="padding:0 18px 18px;"></div>';
+
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+  document.getElementById('shot_file').addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) _shotRunOCR(f);
+  });
+}
+
+function _shotStatus(html){
+  var el = document.getElementById('shot_status');
+  if(el) el.innerHTML = html;
+}
+
+function _shotRunOCR(file){
+  _shotStatus('⏳ OCR kütüphanesi yükleniyor… (ilk seferde ~3 MB)');
+  _loadTesseract().then(function(T){
+    _shotStatus('🖼️ Görsel hazırlanıyor…');
+    return _ocrPreprocess(file).then(function(blob){
+      _shotStatus('🔍 Yazı okunuyor… %0');
+      return T.recognize(blob, 'eng', {
+        logger: function(m){
+          if(m.status === 'recognizing text')
+            _shotStatus('🔍 Yazı okunuyor… %' + Math.round((m.progress || 0) * 100));
+        }
+      });
+    });
+  }).then(function(res){
+    var text = (res && res.data && res.data.text) || '';
+    var ta = document.getElementById('shot_text');
+    if(ta) ta.value = text;            // düzeltmek isterse elinin altında olsun
+    _shotHandleText(text);
+  }).catch(function(err){
+    _shotStatus('<span style="color:var(--loss);">❌ ' + (err && err.message ? err.message : 'OCR başarısız') + '</span><br>'
+      + 'Aşağıdaki "metni elle yapıştır" bölümünü kullanabilirsin.');
+  });
+}
+
+function _shotParseText(){
+  var ta = document.getElementById('shot_text');
+  _shotHandleText(ta ? ta.value : '');
+}
+
+function _shotHandleText(text){
+  if(!text || !text.trim()){ _shotStatus('Metin boş.'); return; }
+  var parsed = parseScreenshotLegs(text);
+  if(!parsed.legs.length){
+    _shotStatus('<span style="color:var(--warn);">⚠️ Kontrat satırı bulunamadı.</span><br>'
+      + 'Ekran görüntüsünde "OCT 16 \'26 790 Call" biçiminde satırlar görünmeli.');
+    document.getElementById('shot_review').innerHTML = '';
+    return;
+  }
+  _shotTrades = groupLegsIntoTrades(parsed.legs);
+  _shotStatus('✅ ' + parsed.legs.length + ' bacak okundu → <b>' + _shotTrades.length + ' işlem</b> oluşturuldu.'
+    + (parsed.warnings.length ? '<br><span style="color:var(--warn);">⚠️ ' + parsed.warnings.length + ' alan okunamadı, aşağıdan düzelt.</span>' : ''));
+  _shotRenderReview(parsed.warnings);
+}
+
+function _shotRenderReview(warnings){
+  var el = document.getElementById('shot_review');
+  if(!el) return;
+  var inp = 'background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:7px;padding:7px 8px;color:var(--text);font-size:12px;outline:none;font-family:var(--font-mono);width:100%;';
+  var lbl = 'font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:3px;';
+
+  var html = '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin:4px 0 9px;">Kontrol et ve düzelt</div>'
+    + '<div style="font-size:11px;color:var(--warn);background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.28);border-radius:9px;padding:9px 11px;margin-bottom:12px;line-height:1.55;">'
+    + 'OCR rakamları yanlış okuyabilir. <b>Her satırı ekran görüntüsüyle karşılaştır</b> — bu veriler vergi hesabına giriyor.</div>';
+
+  if(warnings && warnings.length){
+    html += '<div style="font-size:10px;color:var(--text-3);background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5;">'
+         + warnings.slice(0,6).map(function(w){ return '• ' + w; }).join('<br>') + '</div>';
+  }
+
+  _shotTrades.forEach(function(t, i){
+    var okType = !!t.type;
+    html += '<div style="background:var(--card);border:1px solid ' + (okType ? 'var(--border)' : 'rgba(245,158,11,.45)') + ';border-radius:12px;padding:12px;margin-bottom:11px;">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+      +   '<input type="checkbox" id="sh_use_' + i + '"' + (okType ? ' checked' : '') + ' style="width:17px;height:17px;accent-color:#22C55E;">'
+      +   '<b style="font-size:14px;color:var(--text);">' + (t.ticker || '?') + '</b>'
+      +   '<span style="font-size:11px;color:var(--text-3);">' + t.legs.length + ' bacak</span>'
+      +   (okType ? '' : '<span style="font-size:10px;color:var(--warn);">' + (t.note || '') + '</span>')
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;">'
+      +   '<div><div style="' + lbl + '">Ticker</div><input id="sh_tk_' + i + '" value="' + (t.ticker || '') + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Tip</div>'
+      +     '<select id="sh_ty_' + i + '" style="' + inp + '">'
+      +       (typeof ALL_TRADE_TYPES !== 'undefined' ? ALL_TRADE_TYPES : ['CSP','CC','PCS','BCS','IC'])
+              .map(function(x){ return '<option' + (x === t.type ? ' selected' : '') + '>' + x + '</option>'; }).join('')
+      +     '</select></div>'
+      +   '<div><div style="' + lbl + '">Strike</div><input id="sh_st_' + i + '" value="' + (t.strike || '') + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Adet</div><input id="sh_q_' + i + '" type="number" value="' + (t.q || 1) + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Net Kredi $</div><input id="sh_pr_' + i + '" type="number" step="0.01" value="' + t.openPremium + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Teminat $</div><input id="sh_te_' + i + '" type="number" value="' + t.teminat + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Açılış</div><input id="sh_op_' + i + '" type="date" value="' + (t.opened || '') + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Vade</div><input id="sh_ex_' + i + '" type="date" value="' + (t.expiry || '') + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Komisyon $</div><input id="sh_cm_' + i + '" type="number" step="0.01" value="' + t.openCommission + '" style="' + inp + '"></div>'
+      + '</div>'
+      + '<div style="margin-top:9px;font-size:10px;color:var(--text-3);font-family:var(--font-mono);line-height:1.65;">'
+      +   t.legs.map(function(l){
+            return (l.side === 'SELL' ? '<span style="color:var(--profit)">SAT</span>' : '<span style="color:var(--loss)">AL</span>')
+                 + ' ' + l.qty + '× ' + l.strike + (l.optType === 'C' ? 'C' : 'P')
+                 + ' @ ' + (l.price != null ? l.price : '?') + ' = $' + (l.amount != null ? l.amount : '?');
+          }).join('<br>')
+      + '</div></div>';
+  });
+
+  html += '<button onclick="_shotCommit()" style="width:100%;padding:14px;border-radius:12px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.16);color:#22C55E;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">✅ Seçilenleri ekle</button>';
+  el.innerHTML = html;
+}
+
+function _shotCommit(){
+  if(!_shotTrades || !_shotTrades.length) return;
+  var _jsToApp = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  var v = function(id){ var e = document.getElementById(id); return e ? e.value : ''; };
+  var added = 0;
+
+  _shotTrades.forEach(function(t, i){
+    var cb = document.getElementById('sh_use_' + i);
+    if(!cb || !cb.checked) return;
+    var opened = v('sh_op_' + i);
+    var d = new Date(opened);
+    var month = _jsToApp[isNaN(d) ? new Date().getMonth() : d.getMonth()];
+    var prem = parseFloat(v('sh_pr_' + i)) || 0;
+    var qty  = parseInt(v('sh_q_' + i), 10) || 1;
+
+    if(!tradesData[month]) tradesData[month] = [];
+    tradesData[month].push({
+      id: Date.now() + '_shot_' + i,
+      ticker: (v('sh_tk_' + i) || '?').toUpperCase(),
+      type: v('sh_ty_' + i),
+      strike: v('sh_st_' + i),
+      expiry: v('sh_ex_' + i),
+      opened: opened, closed: null, pnl: null,
+      openPremium: prem, premium: qty ? (prem / (qty * 100)) : prem,
+      q: qty,
+      teminat: parseFloat(v('sh_te_' + i)) || 0,
+      openCommission: parseFloat(v('sh_cm_' + i)) || 0,
+      delta: null, ivr: null,
+      subOwner: ACTIVE_PROFILE === 'mustafa' ? 'Mustafa' : 'Eda',
+      note: '[Ekran görüntüsü]',
+      month: month
+    });
+    added++;
+  });
+
+  if(!added){ alert('Hiçbir işlem seçilmedi.'); return; }
+  saveData();
+  var m = document.getElementById('shot-modal'); if(m) m.remove();
+  try { if(typeof renderTradeList === 'function') renderTradeList(currentFilter); } catch(e){}
+  try { if(typeof renderDashboard === 'function') renderDashboard(); } catch(e){}
+  try { if(typeof _backupToast === 'function') _backupToast('📸 ' + added + ' işlem eklendi', true); } catch(e){}
 }
 
 // ── Canvas rounded-rect helper (path only — caller calls fill/stroke)
