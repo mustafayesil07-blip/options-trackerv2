@@ -38,6 +38,12 @@
     --info-dim: rgba(59,130,246,0.14);
     --purple: #8B5CF6;
     --purple-dim: rgba(139,92,246,0.14);
+    /* Kisi/vurgu renkleri — acik temada koyulastirilmis karsiliklari var */
+    --owner-m: #3B82F6;
+    --owner-e: #EC4899;
+    --accent-green: #10B981;
+    /* Metin icin acik mor — --purple (#8B5CF6) koyu zeminde 3.09 kaliyor */
+    --purple-text: #A78BFA;
     --text: #FFF3E0;
     --text-2: #EDD090;
     --text-3: #C8A060;
@@ -167,9 +173,13 @@
     /* semantic colors — darkened for contrast on warm tan bg */
     --profit: #166534; --profit-dim: rgba(22,101,52,0.14);
     --loss: #B91C1C; --loss-dim: rgba(185,28,28,0.14);
-    --warn: #92400E; --warn-dim: rgba(146,64,14,0.14);
+    /* #92400E acik zeminde 3.57 kontrast veriyordu (10-12px metin icin 4.5
+       gerekli) — vergi sayfasindaki turuncu rakamlar okunmuyordu. */
+    --warn: #6B300C; --warn-dim: rgba(107,48,12,0.14);
     --info: #1E40AF; --info-dim: rgba(30,64,175,0.14);
     --purple: #5B21B6; --purple-dim: rgba(91,33,182,0.14);
+    --owner-m: #1E3A8A; --owner-e: #831843; --accent-green: #14532D;
+    --purple-text: #5B21B6;
   }
   html.light-mode body {
     background: radial-gradient(ellipse at top right,rgba(170,100,30,0.14),transparent 55%),radial-gradient(ellipse at bottom left,rgba(120,70,15,0.10),transparent 50%),var(--bg);
@@ -2320,6 +2330,10 @@ function toggleTheme(){
     else if(currentScreen==='statistics' && typeof renderStats==='function') renderStats();
     else if(currentScreen==='reports' && typeof renderReports==='function') renderReports();
     else if(currentScreen==='risk' && typeof renderRisk==='function') renderRisk();
+    // Vergi sayfasindaki kisi/vurgu renkleri render aninda _themeHex ile
+    // okunuyor — yeniden cizilmezse tema degisiminde bayat kaliyor.
+    else if(currentScreen==='vergi' && typeof renderVergi==='function') renderVergi();
+    else if(currentScreen==='leaps' && typeof renderLeaps==='function') renderLeaps();
   } catch(e){}
 }
 (function _applyTheme(){
@@ -7738,6 +7752,12 @@ function calcTaxForTrade(t){
   };
 }
 
+// CSS token'ini hex olarak okur — '+33' gibi alfa ekleri icin gerekli.
+function _themeHex(name, fallback){
+  try { var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fallback; }
+  catch(e){ return fallback; }
+}
+
 function renderVergi(){
   // Her zaman çalışır — ekran aktif olmasa bile veriyi günceller
   try { _renderVergiInner(); } catch(err){
@@ -7814,26 +7834,26 @@ function _renderVergiInner(){
       _outerRow.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
       ['Mustafa','Eda'].forEach(function(name) {
         var active = VERGI_SUBOWNER === name;
-        var clr = name === 'Mustafa' ? '#3B82F6' : '#EC4899';
+        var clr = name === 'Mustafa' ? _themeHex('--owner-m','#3B82F6') : _themeHex('--owner-e','#EC4899');
         var emoji = name === 'Mustafa' ? '👨' : '👩';
         var btn = document.createElement('div');
         btn.textContent = emoji + ' ' + name;
         btn.dataset.owner = name;
         btn.style.cssText = 'display:inline-block;padding:8px 20px;border-radius:20px;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;' +
-          (active ? 'background:'+clr+'33;border:2px solid '+clr+';color:'+clr : 'background:rgba(255,255,255,0.06);border:2px solid transparent;color:var(--text-3)');
+          (active ? 'background:'+clr+'33;border:2px solid '+clr+';color:'+clr : 'background:var(--row-alt);border:2px solid transparent;color:var(--text-3)');
         btn.onclick = (function(n){ return function(){ setVergiOwner(n); }; })(name);
         _outerRow.appendChild(btn);
       });
       _vOwnerRow.appendChild(_outerRow);
       // İç sekmeler: Own | Others | Total
       var _innerRow = document.createElement('div');
-      _innerRow.style.cssText = 'display:flex;gap:6px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);';
+      _innerRow.style.cssText = 'display:flex;gap:6px;padding-top:8px;border-top:1px solid var(--row-alt);';
       [{key:'self',label:'👤 Own'},{key:'cross',label:'👥 Others'},{key:'total',label:'📊 Total'}].forEach(function(item) {
         var active = VERGI_SUB_SECTION === item.key;
         var btn = document.createElement('div');
         btn.textContent = item.label;
         btn.style.cssText = 'display:inline-block;padding:5px 14px;border-radius:14px;font-weight:600;font-size:12px;cursor:pointer;transition:all .15s;' +
-          (active ? 'background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:var(--text)' : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-3)');
+          (active ? 'background:var(--border);border:1px solid var(--border-bright);color:var(--text)' : 'background:var(--row-alt);border:1px solid var(--row-alt);color:var(--text-3)');
         btn.onclick = (function(k){ return function(){ setVergiSubSection(k); }; })(item.key);
         _innerRow.appendChild(btn);
       });
@@ -7842,13 +7862,13 @@ function _renderVergiInner(){
       // Ayşe/Sevi/İkbal: Mustafa | Eda | Total sekmeleri
       ['Mustafa','Eda','Total'].forEach(function(name) {
         var active = VERGI_SUBOWNER === name;
-        var clr = name === 'Mustafa' ? '#3B82F6' : name === 'Eda' ? '#EC4899' : '#10B981';
+        var clr = name === 'Mustafa' ? _themeHex('--owner-m','#3B82F6') : name === 'Eda' ? _themeHex('--owner-e','#EC4899') : _themeHex('--accent-green','#10B981');
         var emoji = name === 'Mustafa' ? '👨' : name === 'Eda' ? '👩' : '📊';
         var btn = document.createElement('div');
         btn.textContent = emoji + ' ' + name;
         btn.dataset.owner = name;
         btn.style.cssText = 'display:inline-block;margin-right:8px;padding:8px 20px;border-radius:20px;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;' +
-          (active ? 'background:'+clr+'33;border:2px solid '+clr+';color:'+clr : 'background:rgba(255,255,255,0.06);border:2px solid transparent;color:var(--text-3)');
+          (active ? 'background:'+clr+'33;border:2px solid '+clr+';color:'+clr : 'background:var(--row-alt);border:2px solid transparent;color:var(--text-3)');
         btn.onclick = (function(n){ return function(){ setVergiOwner(n); }; })(name);
         _vOwnerRow.appendChild(btn);
       });
@@ -7975,14 +7995,14 @@ function _renderVergiInner(){
       var _hisseGrid = document.createElement('div');
       _hisseGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;';
       var _hisseInputs = {};
-      [{name:'Mustafa',emoji:'👨',clr:'#3B82F6'},{name:'Eda',emoji:'👩',clr:'#EC4899'}].forEach(function(p) {
+      [{name:'Mustafa',emoji:'👨',clr:'var(--owner-m)'},{name:'Eda',emoji:'👩',clr:'var(--owner-e)'}].forEach(function(p) {
         var col = document.createElement('div');
         var lbl = document.createElement('div'); lbl.style.cssText='font-size:10px;font-weight:600;color:'+p.clr+';margin-bottom:5px;'; lbl.textContent=p.emoji+' '+p.name;
         var inp = document.createElement('input');
         inp.type = 'number'; inp.step = '1'; inp.placeholder = '0';
         inp.value = _personData[p.name].hisse !== 0 ? _personData[p.name].hisse : '';
         inp.id = 'hisse_inp_' + p.name;
-        inp.style.cssText = 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:9px 10px;color:var(--text);font-size:13px;outline:none;width:100%;box-sizing:border-box;';
+        inp.style.cssText = 'background:var(--row-alt);border:1px solid var(--border);border-radius:10px;padding:9px 10px;color:var(--text);font-size:13px;outline:none;width:100%;box-sizing:border-box;';
         _hisseInputs[p.name] = inp;
         col.appendChild(lbl); col.appendChild(inp); _hisseGrid.appendChild(col);
       });
@@ -8005,7 +8025,7 @@ function _renderVergiInner(){
       _vtc.appendChild(_hisseCard);
 
       // ── Kişi başına vergi kartı ──
-      [{name:'Mustafa',emoji:'👨',clr:'#3B82F6'},{name:'Eda',emoji:'👩',clr:'#EC4899'}].forEach(function(p) {
+      [{name:'Mustafa',emoji:'👨',clr:'var(--owner-m)'},{name:'Eda',emoji:'👩',clr:'var(--owner-e)'}].forEach(function(p) {
         var pd = _personData[p.name];
         var tax = calcProgressiveTax(pd.total);
         var effRate = pd.total > 0 ? (tax / pd.total * 100) : 0;
@@ -8014,13 +8034,13 @@ function _renderVergiInner(){
         wrap.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;';
 
         var nameRow = document.createElement('div');
-        nameRow.style.cssText = 'font-size:13px;font-weight:700;color:'+p.clr+';margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07);';
+        nameRow.style.cssText = 'font-size:13px;font-weight:700;color:'+p.clr+';margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--row-alt);';
         nameRow.textContent = p.emoji + ' ' + p.name;
         wrap.appendChild(nameRow);
 
         // Matrah kırılımı
         var bkGrid = document.createElement('div');
-        bkGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.05);';
+        bkGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--row-alt);';
         [{l:'Options P&L', v:pd.opt, suffix:' ₺'},{l:'Equity P&L', v:pd.hisse, suffix:' ₺'},{l:'Total Tax Base', v:pd.total, suffix:' ₺'}].forEach(function(x){
           var col = document.createElement('div');
           var lbl2 = document.createElement('div'); lbl2.style.cssText='font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-bottom:3px;'; lbl2.textContent=x.l;
@@ -8032,8 +8052,8 @@ function _renderVergiInner(){
         // Özet satır
         var sumRow = document.createElement('div');
         sumRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;';
-        [{l:'Est. Tax', v:tax.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺', c:'#F59E0B'},
-         {l:'Eff. Rate', v:effRate.toFixed(1)+'%', c:'#A78BFA'}
+        [{l:'Est. Tax', v:tax.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺', c:'var(--warn)'},
+         {l:'Eff. Rate', v:effRate.toFixed(1)+'%', c:'var(--purple-text)'}
         ].forEach(function(x){
           var col = document.createElement('div');
           var lbl = document.createElement('div'); lbl.style.cssText='font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;'; lbl.textContent=x.l;
@@ -8055,11 +8075,11 @@ function _renderVergiInner(){
           var bandTax = bandIncome * b.rate / 100;
           var active = bandIncome > 0;
           var brow = document.createElement('div');
-          brow.style.cssText = 'display:grid;grid-template-columns:1fr 44px 80px 80px;gap:4px;padding:4px;border-radius:5px;font-size:10px;'+(active?'background:rgba(255,255,255,0.04);':'opacity:0.35;');
+          brow.style.cssText = 'display:grid;grid-template-columns:1fr 44px 80px 80px;gap:4px;padding:4px;border-radius:5px;font-size:10px;'+(active?'background:var(--row-alt);':'opacity:0.35;');
           var rangeStr = b.to === Infinity ? b.from.toLocaleString('tr-TR')+'+' : b.from.toLocaleString('tr-TR')+'–'+b.to.toLocaleString('tr-TR');
           [rangeStr, b.rate+'%', active?bandIncome.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'-', active?bandTax.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'-'].forEach(function(txt, i){
             var d = document.createElement('div');
-            d.style.cssText = 'font-family:'+(i>0?'var(--font-mono)':'inherit')+';color:'+(i===3&&active?'#F59E0B':i===1?'var(--text-2)':'var(--text)');
+            d.style.cssText = 'font-family:'+(i>0?'var(--font-mono)':'inherit')+';color:'+(i===3&&active?'var(--warn)':i===1?'var(--text-2)':'var(--text)');
             d.textContent = txt; brow.appendChild(d);
           });
           wrap.appendChild(brow);
@@ -8080,7 +8100,7 @@ function _renderVergiInner(){
         return 15;
       }
 
-      var _optHtml = '<div style="font-size:12px;font-weight:700;color:#10B981;margin-bottom:8px;">&#x1F4A1; Vergi Optimizasyon Önerisi</div>';
+      var _optHtml = '<div style="font-size:12px;font-weight:700;color:var(--accent-green);margin-bottom:8px;">&#x1F4A1; Vergi Optimizasyon Önerisi</div>';
       var _mData = _personData['Mustafa'];
       var _eData = _personData['Eda'];
       var _mTop = _topBracket(_mData.total);
@@ -8096,17 +8116,17 @@ function _renderVergiInner(){
         var _potSaving = _remaining > 0 ? _remaining * (_mTop - _eTop) / 100 : 0;
         _optHtml += '<div style="font-size:11px;color:var(--text-2);line-height:1.5;margin-bottom:8px;">' +
           'Mustafa bu yıl <strong style="color:var(--warn);">%'+_mTop+' diliminde</strong>; Eda ise <strong style="color:var(--profit);">%'+_eTop+' diliminde</strong>. ' +
-          'Kalan karı Eda\'nın hesabından gerçekleştirmek <strong style="color:#10B981;">%'+_diff+' vergi avantajı</strong> sağlar.' +
+          'Kalan karı Eda\'nın hesabından gerçekleştirmek <strong style="color:var(--accent-green);">%'+_diff+' vergi avantajı</strong> sağlar.' +
         '</div>';
         if(_remaining > 0){
           _optHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-            '<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center;">' +
+            '<div style="background:var(--row-alt);border-radius:6px;padding:8px;text-align:center;">' +
               '<div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Eda\'da Kalan Kapasite</div>' +
-              '<div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#10B981;">'+_remaining.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</div>' +
+              '<div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent-green);">'+_remaining.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</div>' +
             '</div>' +
-            '<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center;">' +
+            '<div style="background:var(--row-alt);border-radius:6px;padding:8px;text-align:center;">' +
               '<div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Tahmini Kazanım</div>' +
-              '<div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#10B981;">'+_potSaving.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</div>' +
+              '<div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent-green);">'+_potSaving.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</div>' +
             '</div>' +
           '</div>';
         }
@@ -8161,7 +8181,7 @@ function _renderVergiInner(){
        {l:'Endekslenmiş Matrah', v:_idxSum.idxTotal.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺', c:_idxSum.idxTotal>=0?'var(--profit)':'var(--loss)'}
       ].forEach(function(x){
         var col = document.createElement('div');
-        col.style.cssText = 'background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center;';
+        col.style.cssText = 'background:var(--row-alt);border-radius:6px;padding:8px;text-align:center;';
         col.innerHTML = '<div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px;">'+x.l+'</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:'+x.c+';">'+x.v+'</div>';
         _idxGrid.appendChild(col);
       });
@@ -8170,8 +8190,8 @@ function _renderVergiInner(){
       if(_idxSum.eligible > 0){
         var _savNote = document.createElement('div');
         _savNote.style.cssText = 'padding:8px 11px;background:rgba(16,185,129,0.08);border-left:3px solid #10B981;border-radius:0 6px 6px 0;font-size:10px;color:var(--text-2);line-height:1.4;margin-bottom:8px;';
-        _savNote.innerHTML = 'Endeksleme uygulandığında matrah farkı: <strong style="color:#10B981;">' + _idxSaving.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong>. ' +
-          'Tahmini vergi avantajı (en yüksek diliminizle): <strong style="color:#10B981;">' + (_idxSaving * 0.35).toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong>.';
+        _savNote.innerHTML = 'Endeksleme uygulandığında matrah farkı: <strong style="color:var(--accent-green);">' + _idxSaving.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong>. ' +
+          'Tahmini vergi avantajı (en yüksek diliminizle): <strong style="color:var(--accent-green);">' + (_idxSaving * 0.35).toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong>.';
         _idxCard.appendChild(_savNote);
       }
 
@@ -8234,7 +8254,7 @@ function _renderVergiInner(){
           : (tr.closed||'');
 
         var row=document.createElement('div');
-        row.style.cssText='display:grid;grid-template-columns:150px 52px 80px 80px 60px 60px 80px 80px 140px;min-width:780px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:12px;gap:4px;align-items:center'+(res.isPartialOnly?';background:rgba(245,158,11,0.04)':'');
+        row.style.cssText='display:grid;grid-template-columns:150px 52px 80px 80px 60px 60px 80px 80px 140px;min-width:780px;padding:10px 12px;border-bottom:1px solid var(--row-alt);font-size:12px;gap:4px;align-items:center'+(res.isPartialOnly?';background:rgba(245,158,11,0.04)':'');
 
         var c1=document.createElement('div');
         var sp=document.createElement('span');sp.style.cssText='font-family:var(--font-head);font-weight:600;color:'+tc2.color;sp.textContent=tr.ticker;
@@ -8242,7 +8262,7 @@ function _renderVergiInner(){
         var dt=document.createElement('div');dt.style.cssText='font-size:9px;color:var(--text-3);margin-top:1px';dt.textContent=(tr.opened||'')+' → '+lastCloseDate;
         c1.appendChild(sp);c1.appendChild(dt);
 
-        var c2=document.createElement('div');c2.style.cssText='font-size:10px;padding:2px 5px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--text-2);text-align:center';c2.textContent=tr.type;
+        var c2=document.createElement('div');c2.style.cssText='font-size:10px;padding:2px 5px;border-radius:4px;background:var(--row-alt);color:var(--text-2);text-align:center';c2.textContent=tr.type;
         var c3=document.createElement('div');c3.style.cssText='font-family:var(--font-mono);color:var(--profit);font-size:11px';c3.textContent=alinan>0?fmtA$(alinan):'-';
         var c4=document.createElement('div');c4.style.cssText='font-family:var(--font-mono);color:var(--loss);font-size:11px';c4.textContent=odenen>0?fmtA$(odenen):'-';
         var c5=document.createElement('div');c5.style.cssText='font-family:var(--font-mono);color:var(--text-3);font-size:11px';c5.textContent=res.komAcilis>0?fmtA$(res.komAcilis):'-';
@@ -8261,14 +8281,14 @@ function _renderVergiInner(){
             _c9.innerHTML='';
             // Priority: manual override → yufe indexed → normal
             var dispMatrah = _hm ? _mv : (_yMatrah !== null ? _yMatrah : _res.matrah_try);
-            var dispColor = _hm ? '#F59E0B' : (!_res.hasKur ? 'var(--warn)' : dispMatrah >= 0 ? 'var(--profit)' : 'var(--loss)');
+            var dispColor = _hm ? 'var(--warn)' : (!_res.hasKur ? 'var(--warn)' : dispMatrah >= 0 ? 'var(--profit)' : 'var(--loss)');
             var dispTxt = _hm ? (_mv.toFixed(2)+' ₺') : (!_res.hasKur ? 'Rate missing' : dispMatrah.toFixed(2)+' ₺');
             // Badges
-            if(_hm){ var badge=document.createElement('span');badge.textContent='M';badge.style.cssText='font-size:8px;background:rgba(245,158,11,0.25);color:#F59E0B;border-radius:3px;padding:0 3px;font-weight:700;';badge.title='Manuel değer';_c9.appendChild(badge); }
-            else if(_yIdx.eligible){ var yBadge=document.createElement('span');yBadge.textContent='YİÜFE';yBadge.style.cssText='font-size:7px;background:rgba(59,130,246,0.2);color:var(--info);border-radius:3px;padding:0 4px;font-weight:700;letter-spacing:.3px;';yBadge.title='Endeksleme uygulandı: x'+_yIdx.ratio.toFixed(4)+' (artış %'+_yIdx.increase.toFixed(1)+')';_c9.appendChild(yBadge); }
+            if(_hm){ var badge=document.createElement('span');badge.textContent='M';badge.style.cssText='font-size:8px;background:var(--warn-dim);color:var(--warn);border-radius:3px;padding:0 3px;font-weight:700;';badge.title='Manuel değer';_c9.appendChild(badge); }
+            else if(_yIdx.eligible){ var yBadge=document.createElement('span');yBadge.textContent='YİÜFE';yBadge.style.cssText='font-size:7px;background:var(--info-dim);color:var(--info);border-radius:3px;padding:0 4px;font-weight:700;letter-spacing:.3px;';yBadge.title='Endeksleme uygulandı: x'+_yIdx.ratio.toFixed(4)+' (artış %'+_yIdx.increase.toFixed(1)+')';_c9.appendChild(yBadge); }
             var valS=document.createElement('span');valS.style.cssText='font-family:var(--font-mono);font-weight:600;color:'+dispColor+';font-size:11px;';valS.textContent=dispTxt;
             var editB=document.createElement('button');editB.textContent='✎';editB.title=_hm?'Manuel değer — düzenle':'Manuel değer gir';
-            editB.style.cssText='background:'+(_hm?'rgba(245,158,11,0.15)':'rgba(255,255,255,0.07)')+';border:1px solid '+(_hm?'rgba(245,158,11,0.35)':'rgba(255,255,255,0.12)')+';border-radius:4px;padding:2px 6px;color:'+(_hm?'#F59E0B':'var(--text-3)')+';font-size:10px;cursor:pointer;font-family:inherit;';
+            editB.style.cssText='background:'+(_hm?'var(--warn-dim)':'var(--row-alt)')+';border:1px solid '+(_hm?'var(--border-bright)':'var(--border)')+';border-radius:4px;padding:2px 6px;color:'+(_hm?'var(--warn)':'var(--text-3)')+';font-size:10px;cursor:pointer;font-family:inherit;';
             editB.onclick=function(ev){ev.stopPropagation();showEdit();};
             _c9.appendChild(valS);_c9.appendChild(editB);
           }
@@ -8278,17 +8298,17 @@ function _renderVergiInner(){
             inp.type='number';inp.step='0.01';
             inp.value=_hm?_mv.toFixed(2):(_res.hasKur?_res.matrah_try.toFixed(2):'0');
             inp.placeholder='TRY matrah';
-            inp.style.cssText='width:78px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:5px;padding:3px 6px;color:var(--text);font-size:11px;outline:none;font-family:var(--font-mono);';
+            inp.style.cssText='width:78px;background:var(--border);border:1px solid var(--border-bright);border-radius:5px;padding:3px 6px;color:var(--text);font-size:11px;outline:none;font-family:var(--font-mono);';
             var saveB=document.createElement('button');saveB.textContent='✓';
             saveB.style.cssText='background:#10B981;border:none;border-radius:4px;padding:3px 7px;color:white;font-size:12px;cursor:pointer;font-weight:700;font-family:inherit;';
             var cancelB=document.createElement('button');cancelB.textContent='✕';
-            cancelB.style.cssText='background:rgba(255,255,255,0.08);border:none;border-radius:4px;padding:3px 7px;color:var(--text-3);font-size:12px;cursor:pointer;font-family:inherit;';
+            cancelB.style.cssText='background:var(--row-alt);border:none;border-radius:4px;padding:3px 7px;color:var(--text-3);font-size:12px;cursor:pointer;font-family:inherit;';
             saveB.onclick=function(ev){ev.stopPropagation();var v=parseFloat(inp.value);if(isNaN(v)){inp.style.borderColor='red';return;}setVergiOverride(_tid,v);};
             cancelB.onclick=function(ev){ev.stopPropagation();showNormal();};
             _c9.appendChild(inp);_c9.appendChild(saveB);_c9.appendChild(cancelB);
             if(_hm){
               var clrB=document.createElement('button');clrB.textContent='↺';clrB.title='Hesaplanan değere dön';
-              clrB.style.cssText='background:rgba(239,68,68,0.15);border:none;border-radius:4px;padding:3px 7px;color:#EF4444;font-size:12px;cursor:pointer;font-family:inherit;';
+              clrB.style.cssText='background:rgba(239,68,68,0.15);border:none;border-radius:4px;padding:3px 7px;color:var(--loss);font-size:12px;cursor:pointer;font-family:inherit;';
               clrB.onclick=function(ev){ev.stopPropagation();setVergiOverride(_tid,null);};
               _c9.appendChild(clrB);
             }
