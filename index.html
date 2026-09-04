@@ -6019,9 +6019,13 @@ function parseScreenshotLegs(rawText){
     // "P&L" basligi "P" ve "L" belirtecleri uretip ticker sanilabiliyor.
     // Tek harfli gercek tickerlari (A, C, F, T) engellememek icin
     // basligi burada temizliyoruz, kara listeye eklemiyoruz.
+    // P&L sutunundaki "$0" cogu zaman "SO" / "S0" diye okunuyor ve ticker
+    // sanilabiliyor. Satirin SONUNDAKI bu artigi at — basindaki gercek
+    // ticker'a (ornegin SO = Southern Company) dokunma.
     return String(l).replace(/P\s*&\s*L/gi, ' ')
                     .replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, ' ')
-                    .replace(BORSA, ' ');
+                    .replace(BORSA, ' ')
+                    .replace(/(\S)\s+[S$][O0]\s*$/, '$1');
   }
   function tokens(str, dollarOnly){
     var re = dollarOnly ? /\$\s?(\d[\d.,]*)/g : /(?:^|[\s(])\$?\s?(\d[\d.,]*)/g;
@@ -6054,20 +6058,29 @@ function parseScreenshotLegs(rawText){
     // GERİ pencere: yalnızca çapanın hemen üstündeki satır(lar) — ticker + dolum fiyatı.
     // Bir önceki çapayı GEÇMEZ, yoksa önceki bacağın verisi karışır.
     var backFrom = Math.max(n === 0 ? 0 : anchors[n-1] + 1, idx - 2);
-    var back  = lines.slice(backFrom, idx).map(clean).join(' \n ');
+    // Tarih seridi ("2.09.2026  $0") geri pencereden tamamen cikarilir:
+    // ne ticker'i ne de dolum fiyatini o satirdan okumak dogru olur.
+    var backLines = lines.slice(backFrom, idx).map(clean)
+      .filter(function(l){ return !DATEHDR.test(l); });
+    var back  = backLines.join(' \n ');
 
     var cm = lines[idx].match(CONTRACT);
     var expiry  = '20' + cm[3] + '-' + ('0' + _OCR_MONTHS[cm[1].toUpperCase()]).slice(-2) + '-' + ('0' + cm[2]).slice(-2);
     var strike  = _ocrNum(cm[4]);
     var optType = /call/i.test(cm[5]) ? 'C' : 'P';
 
-    // Ticker: çapanın ÜSTÜNDEKİ satırdan, en yakından başlayarak
+    // Ticker: çapanın ÜSTÜNDEKİ satırlardan, EN YAKIN satırdan başlayarak ve
+    // her satırı kendi içinde soldan sağa tarayarak. (Tek bir birleşik metinde
+    // arandığında, tarih şeridindeki "$0" -> "SO" artığı SPY'den önce gelip
+    // ticker sanılıyordu; ilk bacak bu yüzden ayrı bir işleme düşüyordu.)
     var ticker = null;
-    var tkSource = (back + ' \n ' + fwd);
-    var toks = tkSource.match(/\b[A-Z][A-Z0-9.]{0,5}\b/g) || [];
-    for(var i = 0; i < toks.length; i++){
-      var tk = toks[i].replace(/\.$/, '');
-      if(!_OCR_NOT_TICKER[tk] && !/^\d+$/.test(tk)){ ticker = tk; break; }
+    var tkLines = backLines.slice().reverse().concat([fwd]);
+    for(var li = 0; li < tkLines.length && !ticker; li++){
+      var toks = tkLines[li].match(/\b[A-Z][A-Z0-9.]{0,5}\b/g) || [];
+      for(var i = 0; i < toks.length; i++){
+        var tk = toks[i].replace(/\.$/, '');
+        if(!_OCR_NOT_TICKER[tk] && !/^\d+$/.test(tk)){ ticker = tk; break; }
+      }
     }
 
     // Yön/adet: yalnızca İLERİ pencereden
@@ -6120,11 +6133,25 @@ function parseScreenshotLegs(rawText){
       side: side, qty: qty, price: price, amount: amount,
       comm: comm || 0, date: dateAbove(idx), raw: lines[idx]
     };
-    if(!ticker) warnings.push('"' + lines[idx] + '" için ticker okunamadı.');
     if(!side)   warnings.push('"' + lines[idx] + '" için Sold/Bought okunamadı.');
     if(!qty)    warnings.push('"' + lines[idx] + '" için adet okunamadı.');
     if(!amount) warnings.push('"' + lines[idx] + '" için tutar okunamadı.');
     return leg;
+  });
+
+  // Ticker okunamayan bacak, ayni vadeyi paylastigi komsusundan devralir.
+  // (Cok bacakli bir islemde tek bir satirin ticker'i silik cikabiliyor;
+  // bacagi disarida birakmaktansa gruba dahil etmek dogru sonucu verir.)
+  legs.forEach(function(l, i){
+    if(l.ticker) return;
+    for(var d = 1; d < legs.length; d++){
+      var prev = legs[i-d], next = legs[i+d];
+      var src = (prev && prev.ticker && prev.expiry === l.expiry) ? prev
+              : (next && next.ticker && next.expiry === l.expiry) ? next : null;
+      if(src){ l.ticker = src.ticker; l.tickerGuessed = true; break; }
+    }
+    if(!l.ticker) warnings.push('"' + l.raw + '" için ticker okunamadı.');
+    else warnings.push('"' + l.raw + '" ticker\'ı okunamadı, komşu bacaktan ' + l.ticker + ' varsayıldı.');
   });
 
   return { legs: legs, warnings: warnings };
