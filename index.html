@@ -8971,7 +8971,7 @@ function showUpdateBanner() {
   import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import { getMessaging, getToken, onMessage }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
-  import { getFirestore, doc, setDoc, getDoc }
+  import { getFirestore, doc, setDoc, getDoc, getDocFromServer }
                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -8988,74 +8988,105 @@ function showUpdateBanner() {
   const db        = getFirestore(app);
   const VAPID_KEY = "BDcNMAd0E107KD5mOEBPKV1pMAvGZJv0AK1x7_u2Gq1-ylhCjmxLrgjaMueAILZSDRr6EGJTLduKm9BtgTtQTJw";
 
-  // ── Aktif profilin açık pozisyonları + TÜM profillerin tam yedeği ──────
+  // ── SADECE bildirim belgesi ('optionflow/main') ────────────────────────
+  // check.js bunu okuyup fiyat/expiry bildirimlerini tetikliyor. FCM token
+  // cihaza bagli oldugu icin yalnizca AKTIF profilin acik pozisyonlarini
+  // kapsar.
+  //
+  // DIKKAT: Bu fonksiyon her saveData()/saveLeaps() cagrisinda otomatik
+  // calisiyor. Bu yuzden TAM YEDEGI (backup_all) BURADA YAZMIYORUZ —
+  // yazsaydik, bulutu henuz cekmemis (bayat verili) bir cihazda yapilan
+  // herhangi bir duzenleme, diger cihazlarin yeni verisini otomatik olarak
+  // ezerdi. Tam yedek yalnizca kullanici "Push to Cloud"a bastiginda yazilir.
   async function syncPositionsToFirestore(token) {
     try {
-      const profile  = window.ACTIVE_PROFILE || 'mustafa';
+      if (!token) return;                       // token yoksa yazacak bir sey yok
       const lsKey    = window.LS       || 'opt_v22';
       const leapsKey = window.LEAPS_LS || 'leaps_v1';
-
-      // Bildirim belgesi (check.js): FCM token cihaza bağlı olduğu için
-      // yalnızca aktif profilin açık pozisyonlarını kapsar. Aşağıdaki TAM
-      // YEDEKTEN bağımsız, ayrı bir belge — dokunmadım.
-      if (token) {
-        const tradesRaw  = localStorage.getItem(lsKey);
-        const leapsRaw   = localStorage.getItem(leapsKey);
-        const tradesData = tradesRaw ? JSON.parse(tradesRaw) : {};
-        const leapsData  = leapsRaw  ? JSON.parse(leapsRaw)  : [];
-        const openTrades = [];
-        Object.values(tradesData).forEach(month => {
-          month.forEach(t => {
-            if (!t.closed) openTrades.push({
-              id: t.id, ticker: t.ticker, type: t.type,
-              strike: t.strike, expiry: t.expiry, closed: null
-            });
+      const tradesRaw  = localStorage.getItem(lsKey);
+      const leapsRaw   = localStorage.getItem(leapsKey);
+      const tradesData = tradesRaw ? JSON.parse(tradesRaw) : {};
+      const leapsData  = leapsRaw  ? JSON.parse(leapsRaw)  : [];
+      const openTrades = [];
+      Object.values(tradesData).forEach(month => {
+        month.forEach(t => {
+          if (!t.closed) openTrades.push({
+            id: t.id, ticker: t.ticker, type: t.type,
+            strike: t.strike, expiry: t.expiry, closed: null
           });
         });
-        leapsData.forEach(l => {
-          if (!l.closed) openTrades.push({
-            id: 'L' + l.id, ticker: l.ticker, type: 'LEAPS',
-            strike: l.strike, expiry: l.expiry, closed: null
-          });
+      });
+      leapsData.forEach(l => {
+        if (!l.closed) openTrades.push({
+          id: 'L' + l.id, ticker: l.ticker, type: 'LEAPS',
+          strike: l.strike, expiry: l.expiry, closed: null
         });
-        await setDoc(doc(db, 'optionflow', 'main'), {
-          positions: openTrades,
-          token:     token,
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      // TAM YEDEK: dört profilin TAMAMI + paylaşılan depolar (kurlar,
-      // YİÜFE, aylık notlar) tek belgede. ESKİDEN yalnızca o an seçili
-      // profil yedekleniyordu — diğer üç profilin verisi hiç buluta
-      // çıkmıyordu. buildCloudBackupPayload() ana script'te tanımlı,
-      // Firebase'e bağımlı değil.
-      const payload = window.buildCloudBackupPayload();
-      await setDoc(doc(db, 'optionflow', 'backup_all'), payload);
-
-      console.info('[Sync] Firestore yedeklendi — tüm profiller:', Object.keys(payload.profiles).join(', '));
+      });
+      await setDoc(doc(db, 'optionflow', 'main'), {
+        positions: openTrades,
+        token:     token,
+        updatedAt: new Date().toISOString()
+      });
     } catch (err) {
-      console.warn('[Sync] Firestore hata:', err.message);
+      console.warn('[Sync] Bildirim belgesi hatasi:', err.message);
       throw err;
     }
+  }
+
+  // Bu cihazin en son gordugu (cektigi ya da yazdigi) bulut anlik goruntusu.
+  // Cakisma korumasi icin: baskasi bizden sonra yazdiysa uzerine yazmadan once
+  // kullaniciya soruyoruz.
+  const CLOUD_SEEN_KEY = 'optflow_cloud_seen_at';
+  function _cloudSeen()      { try { return localStorage.getItem(CLOUD_SEEN_KEY); } catch(e){ return null; } }
+  function _setCloudSeen(ts) { try { if (ts) localStorage.setItem(CLOUD_SEEN_KEY, ts); } catch(e){} }
+
+  // Firestore onbellegi bayat veri dondurebilir; once SUNUCUDAN oku.
+  async function _readDocFresh(ref) {
+    try { return await getDocFromServer(ref); }
+    catch (e) { return await getDoc(ref); }   // cevrimdisi: onbellege dus
+  }
+
+  // ── TAM YEDEK: dort profilin TAMAMI + paylasilan depolar ───────────────
+  // Yalnizca kullanici "Push to Cloud"a basinca calisir.
+  async function pushFullBackupToCloud(force) {
+    const ref = doc(db, 'optionflow', 'backup_all');
+    // Cakisma korumasi: buluttaki surum bu cihazin en son gorduguden yeniyse
+    // (yani baska bir cihaz arada yazmissa) onay almadan uzerine yazma.
+    if (!force) {
+      try {
+        const cur = await _readDocFresh(ref);
+        if (cur.exists()) {
+          const cloudAt = cur.data().savedAt || null;
+          const seen    = _cloudSeen();
+          if (cloudAt && cloudAt !== seen) {
+            return { conflict: true, cloudSavedAt: cloudAt, cloudFrom: cur.data().savedFrom || null };
+          }
+        }
+      } catch (e) { /* okunamadi: yazmayi engelleme */ }
+    }
+    const payload = window.buildCloudBackupPayload();
+    await setDoc(ref, payload);
+    _setCloudSeen(payload.savedAt);
+    console.info('[Sync] Tam yedek yazildi — profiller:', Object.keys(payload.profiles).join(', '));
+    return { ok: true, savedAt: payload.savedAt };
   }
 
   // ── Firestore'daki tam yedekten TÜM profilleri geri yükle ──────────────
   async function restoreFromFirestore(profile) {
     try {
-      const snap = await getDoc(doc(db, 'optionflow', 'backup_all'));
+      const snap = await _readDocFresh(doc(db, 'optionflow', 'backup_all'));
       if (snap.exists()) {
         const d  = snap.data();
         const ok = window.applyCloudBackupPayload(d);
-        console.info('[Sync] Firestore geri yüklendi — tüm profiller | tarih:', d.savedAt);
-        return ok;
+        _setCloudSeen(d.savedAt);
+        console.info('[Sync] Geri yuklendi — tum profiller | tarih:', d.savedAt);
+        return { ok: ok, savedAt: d.savedAt || null, savedFrom: d.savedFrom || null };
       }
 
-      // ESKİ FORMAT (tek profil, 'backup_<profile>') — bu güncellemeden
-      // önce alınmış bir yedek varsa kaybolmasın diye tek seferlik
-      // geriye dönük uyumluluk yolu.
-      const legacy = await getDoc(doc(db, 'optionflow', 'backup_' + profile));
-      if (!legacy.exists()) return false;
+      // ESKİ FORMAT (tek profil, 'backup_<profile>') — bu guncellemeden once
+      // alinmis bir yedek varsa kaybolmasin diye geriye donuk uyumluluk.
+      const legacy = await _readDocFresh(doc(db, 'optionflow', 'backup_' + profile));
+      if (!legacy.exists()) return { ok: false };
       const ld  = legacy.data();
       const pfx = (profile === 'mustafa') ? '' : profile + '_';
       if (ld.trades)   localStorage.setItem(pfx + 'opt_v22',    ld.trades);
@@ -9065,16 +9096,17 @@ function showUpdateBanner() {
       if (ld.planned)  localStorage.setItem(pfx + 'planned_v1',  ld.planned);
       if (ld.nlv)      localStorage.setItem(pfx + 'nlv_start',   ld.nlv);
       if (ld.portSize) localStorage.setItem(pfx + 'temH',        ld.portSize);
-      console.info('[Sync] Firestore geri yüklendi (eski format) — profil:', profile);
-      return true;
+      console.info('[Sync] Geri yuklendi (eski format) — profil:', profile);
+      return { ok: true, savedAt: ld.savedAt || null, legacy: true };
     } catch (err) {
       console.warn('[Sync] Restore hata:', err.message);
-      return false;
+      return { ok: false, error: err.message };
     }
   }
 
   // Global'e aktar
   window.syncPositionsToFirestore = syncPositionsToFirestore;
+  window.pushFullBackupToCloud     = pushFullBackupToCloud;
   window.restoreFromFirestore      = restoreFromFirestore;
 
   // Modül yüklenince: yerel veri YOKSA cloud'dan geri yükle
@@ -9085,8 +9117,8 @@ function showUpdateBanner() {
     if (!profile) return;
     const lsKey = window.LS || (profile === 'mustafa' ? 'opt_v22' : profile + '_opt_v22');
     if (!localStorage.getItem(lsKey)) {
-      const ok = await restoreFromFirestore(profile);
-      if (ok && typeof window.reloadProfileData === 'function') {
+      const res = await restoreFromFirestore(profile);
+      if (res && res.ok && typeof window.reloadProfileData === 'function') {
         window.reloadProfileData();
         try { if (typeof window.reloadSharedStores === 'function') window.reloadSharedStores(); } catch(e){}
       }
@@ -9296,19 +9328,43 @@ function showProfileScreen() {
   document.getElementById('profile-screen').style.display = 'flex';
 }
 
-function pushToCloud() {
+function _cloudFmtTime(iso){
+  if(!iso) return 'bilinmiyor';
+  var d = new Date(iso);
+  if(isNaN(d)) return String(iso);
+  return d.toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric',
+                                     hour:'2-digit', minute:'2-digit' });
+}
+
+function pushToCloud(force) {
   if(!ACTIVE_PROFILE){ alert('No profile selected.'); return; }
-  if(typeof window.syncPositionsToFirestore !== 'function'){
+  if(typeof window.pushFullBackupToCloud !== 'function'){
     alert('Cloud connection not ready, please wait a moment and try again.');
     return;
   }
   var btn = document.getElementById('cloudPushBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Uploading...'; }
-  window.syncPositionsToFirestore(window._fcmToken || null).then(function(){
+  var reset = function(){ if(btn){ btn.disabled=false; btn.textContent='↑ Push to Cloud'; } };
+
+  window.pushFullBackupToCloud(!!force).then(function(res){
+    // Cakisma: bulutta, bu cihazin en son gorduguden DAHA YENI bir surum var.
+    // Baska bir cihaz arada yazmis demektir; sormadan uzerine yazmiyoruz.
+    if(res && res.conflict){
+      reset();
+      var msg = '⚠️ Bulutta daha yeni bir yedek var\n\n'
+              + 'Bulut kaydı : ' + _cloudFmtTime(res.cloudSavedAt) + '\n'
+              + 'Bu cihaz onu henüz çekmemiş.\n\n'
+              + 'Yine de bu cihazdaki veriyi gönderirsen buluttaki daha yeni\n'
+              + 'kayıt SİLİNİR.\n\n'
+              + 'Önce "Pull from Cloud" yapman önerilir.\n\n'
+              + 'Yine de üzerine yazılsın mı?';
+      if(confirm(msg)) pushToCloud(true);
+      return;
+    }
     if(btn){ btn.textContent = '✅ Uploaded!'; }
-    setTimeout(function(){ if(btn){ btn.disabled=false; btn.textContent='↑ Push to Cloud'; } }, 3000);
+    setTimeout(reset, 3000);
   }).catch(function(e){
-    if(btn){ btn.disabled=false; btn.textContent='↑ Push to Cloud'; }
+    reset();
     var msg = (e && e.message) ? e.message : String(e);
     alert('❌ Upload failed:\n\n' + msg + '\n\nCheck your internet connection.');
   });
@@ -9322,17 +9378,21 @@ function syncFromCloud() {
   }
   var btn = document.getElementById('cloudSyncBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Loading...'; }
-  window.restoreFromFirestore(ACTIVE_PROFILE).then(function(ok){
-    if(ok){
+  window.restoreFromFirestore(ACTIVE_PROFILE).then(function(res){
+    if(res && res.ok){
       if(btn){ btn.textContent = 'Loaded!'; }
       document.getElementById('profile-screen').style.display = 'none';
       reloadProfileData();
-      // Restore artık TÜM profilleri kapsıyor; kurlar/YİÜFE/notlar gibi
-      // profil bağımsız depolar reloadProfileData() tarafından
-      // okunmuyor (yalnızca kurlar okunuyor) — ekranda eski veri
-      // kalmasın diye ayrıca tazeleniyor.
+      // Restore TÜM profilleri kapsıyor; kurlar/YİÜFE/notlar gibi profil
+      // bağımsız depolar reloadProfileData() tarafından okunmuyor
+      // (yalnızca kurlar okunuyor) — ekranda eski veri kalmasın diye tazele.
       try { if(typeof reloadSharedStores==='function') reloadSharedStores(); } catch(e){}
       try { if(typeof renderReports==='function') renderReports(); } catch(e){}
+      // Hangi anlik goruntunun geldigi belli olsun.
+      try {
+        if(typeof _backupToast==='function')
+          _backupToast('☁️ ' + _cloudFmtTime(res.savedAt) + ' yedeği yüklendi', true);
+      } catch(e){}
     } else {
       if(btn){ btn.disabled = false; btn.textContent = 'Load from Cloud'; }
       alert('No cloud backup found for this profile.');
