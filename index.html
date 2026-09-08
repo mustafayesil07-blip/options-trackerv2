@@ -6432,12 +6432,29 @@ function _shotRenderReview(warnings){
               .map(function(x){ return '<option' + (x === t.type ? ' selected' : '') + '>' + x + '</option>'; }).join('')
       +     '</select></div>'
       +   '<div><div style="' + lbl + '">Strike</div><input id="sh_st_' + i + '" value="' + (t.strike || '') + '" style="' + inp + '"></div>'
-      +   '<div><div style="' + lbl + '">Adet</div><input id="sh_q_' + i + '" type="number" value="' + (t.q || 1) + '" style="' + inp + '"></div>'
+      +   '<div><div style="' + lbl + '">Adet</div><input id="sh_q_' + i + '" type="number" oninput="_shotSplitSum(' + i + ')" value="' + (t.q || 1) + '" style="' + inp + '"></div>'
       +   '<div><div style="' + lbl + '">Net Kredi $</div><input id="sh_pr_' + i + '" type="number" step="0.01" value="' + t.openPremium + '" style="' + inp + '"></div>'
       +   '<div><div style="' + lbl + '">Teminat $</div><input id="sh_te_' + i + '" type="number" value="' + t.teminat + '" style="' + inp + '"></div>'
       +   '<div><div style="' + lbl + '">Açılış</div><input id="sh_op_' + i + '" type="date" value="' + (t.opened || '') + '" style="' + inp + '"></div>'
       +   '<div><div style="' + lbl + '">Vade</div><input id="sh_ex_' + i + '" type="date" value="' + (t.expiry || '') + '" style="' + inp + '"></div>'
       +   '<div><div style="' + lbl + '">Komisyon $</div><input id="sh_cm_' + i + '" type="number" step="0.01" value="' + t.openCommission + '" style="' + inp + '"></div>'
+      + '</div>'
+      // Kontrat dagilimi — tek islemde birden fazla profil icin acilan
+      // pozisyonlar. Prim/teminat/komisyon kontrat orani kadar bolunur.
+      + '<div style="margin-top:11px;padding-top:10px;border-top:1px solid var(--border);">'
+      +   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:7px;">'
+      +     '<div style="' + lbl + 'margin:0;">Kontrat dağılımı</div>'
+      +     '<div id="sh_sum_' + i + '" style="font-size:10px;font-family:var(--font-mono);font-weight:700;"></div>'
+      +   '</div>'
+      +   '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">'
+      +     _SHOT_PIDS.map(function(pid){
+              var pr = (typeof PROFILES !== 'undefined' && PROFILES[pid]) ? PROFILES[pid] : { name: pid, emoji: '' };
+              var def = (pid === ACTIVE_PROFILE) ? (t.q || 1) : 0;
+              return '<div><div style="' + lbl + 'text-align:center;">' + pr.emoji + ' ' + pr.name + '</div>'
+                   + '<input id="sh_sp_' + i + '_' + pid + '" type="number" min="0" step="1" value="' + def + '" '
+                   + 'oninput="_shotSplitSum(' + i + ')" style="' + inp + 'text-align:center;"></div>';
+            }).join('')
+      +   '</div>'
       + '</div>'
       + '<div style="margin-top:9px;font-size:10px;color:var(--text-3);font-family:var(--font-mono);line-height:1.65;">'
       +   t.legs.map(function(l){
@@ -6450,6 +6467,63 @@ function _shotRenderReview(warnings){
 
   html += '<button onclick="_shotCommit()" style="width:100%;padding:14px;border-radius:12px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.16);color:#22C55E;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">✅ Seçilenleri ekle</button>';
   el.innerHTML = html;
+  _shotTrades.forEach(function(t, i){ _shotSplitSum(i); });
+}
+
+// ── Kontrat dagilimi (profil bazli) ─────────────────────────────────────
+// Tek bir emirde birden fazla kisi icin pozisyon acilabiliyor: 7 kontratin
+// 5'i Ayse, 1'i Sevi, 1'i Ikbal gibi. Her profile kendi kontrat sayisi
+// kadar AYRI bir islem yazilir; prim, teminat ve komisyon kontrat orani
+// kadar bolunur.
+var _SHOT_PIDS = ['mustafa','ayse','sevi','ikbal'];
+
+function _shotSplitAlloc(i){
+  var qe = document.getElementById('sh_q_' + i);
+  var total = Math.max(0, parseInt(qe ? qe.value : '0', 10) || 0);
+  var parts = [], sum = 0;
+  _SHOT_PIDS.forEach(function(pid){
+    var el = document.getElementById('sh_sp_' + i + '_' + pid);
+    var n = Math.max(0, parseInt(el ? el.value : '0', 10) || 0);
+    sum += n;
+    if(n > 0) parts.push({ pid: pid, n: n });
+  });
+  return { total: total, sum: sum, parts: parts };
+}
+
+function _shotSplitSum(i){
+  var el = document.getElementById('sh_sum_' + i);
+  if(!el) return;
+  var a = _shotSplitAlloc(i);
+  var note = '', clr = 'var(--profit)';
+  if(a.sum > a.total){ note = ' · ' + (a.sum - a.total) + ' fazla'; clr = 'var(--loss)'; }
+  else if(a.sum === 0){ note = ' · dağıtılmadı'; clr = 'var(--loss)'; }
+  else if(a.sum < a.total){ note = ' · ' + (a.total - a.sum) + ' kontrat hariç'; clr = 'var(--warn)'; }
+  el.textContent = a.sum + ' / ' + a.total + ' kontrat' + note;
+  el.style.color = clr;
+}
+
+// Aktif olmayan profile yazarken tradesData'ya dokunmayiz — dogrudan o
+// profilin localStorage anahtarina yazilir (saveData yalnizca aktif
+// profili kaydeder ve aksi halde yazdigimizi geri ezerdi).
+function _shotStoreKey(pid){ return pid === 'mustafa' ? 'opt_v22' : pid + '_opt_v22'; }
+
+function _shotAddTradeTo(pid, month, trade){
+  if(pid === ACTIVE_PROFILE){
+    if(!tradesData[month]) tradesData[month] = [];
+    tradesData[month].push(trade);
+    return;
+  }
+  var key = _shotStoreKey(pid), data = null;
+  try { var raw = localStorage.getItem(key); if(raw) data = JSON.parse(raw); } catch(e){ data = null; }
+  // Mustafa profili hic acilmamissa deposu bostur ve reloadProfileData
+  // SEED'den baslatir. Sadece bizim islemi yazarsak o tohum veri kaybolur.
+  if(!data || typeof data !== 'object'){
+    data = (pid === 'mustafa' && typeof SEED !== 'undefined')
+      ? JSON.parse(JSON.stringify(SEED)) : {};
+  }
+  if(!data[month]) data[month] = [];
+  data[month].push(trade);
+  localStorage.setItem(key, JSON.stringify(data));
 }
 
 // Onay ekranindaki hesap sahibi secimi
@@ -6472,43 +6546,90 @@ function _shotCommit(){
   var _jsToApp = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
   var v = function(id){ var e = document.getElementById(id); return e ? e.value : ''; };
   var owner = v('sh_owner') || (ACTIVE_PROFILE === 'mustafa' ? 'Mustafa' : 'Eda');
-  var added = 0;
 
+  // ── 1) Once TUM secili islemleri dogrula ──
+  // Kismi yazip ortada birakmamak icin tek bir hata bile varsa hicbir sey
+  // kaydedilmez.
+  var picked = [], problems = [];
   _shotTrades.forEach(function(t, i){
     var cb = document.getElementById('sh_use_' + i);
     if(!cb || !cb.checked) return;
+    var tk = (v('sh_tk_' + i) || '?').toUpperCase();
+    var alloc = _shotSplitAlloc(i);
+    if(alloc.total < 1)            problems.push(tk + ': adet 0 olamaz.');
+    else if(alloc.sum === 0)       problems.push(tk + ': hiçbir profile kontrat atanmadı.');
+    else if(alloc.sum > alloc.total) problems.push(tk + ': dağıtılan ' + alloc.sum + ' kontrat, toplam ' + alloc.total + '\'den fazla.');
+    else picked.push({ i: i, alloc: alloc, ticker: tk });
+  });
+
+  if(problems.length){ alert('Kontrat dağılımını düzelt:\n\n• ' + problems.join('\n• ')); return; }
+  if(!picked.length){ alert('Hiçbir işlem seçilmedi.'); return; }
+
+  // ── 2) Yaz ──
+  var added = 0, perProfile = {}, stamp = Date.now();
+  picked.forEach(function(sel){
+    var i = sel.i, alloc = sel.alloc;
     var opened = v('sh_op_' + i);
     var d = new Date(opened);
     var month = _jsToApp[isNaN(d) ? new Date().getMonth() : d.getMonth()];
+    var qty  = alloc.total;
     var prem = parseFloat(v('sh_pr_' + i)) || 0;
-    var qty  = parseInt(v('sh_q_' + i), 10) || 1;
+    var tem  = parseFloat(v('sh_te_' + i)) || 0;
+    var cm   = parseFloat(v('sh_cm_' + i)) || 0;
 
-    if(!tradesData[month]) tradesData[month] = [];
-    tradesData[month].push({
-      id: Date.now() + '_shot_' + i,
-      ticker: (v('sh_tk_' + i) || '?').toUpperCase(),
-      type: v('sh_ty_' + i),
-      strike: v('sh_st_' + i),
-      expiry: v('sh_ex_' + i),
-      opened: opened, closed: null, pnl: null,
-      openPremium: prem, premium: qty ? (prem / (qty * 100)) : prem,
-      q: qty,
-      teminat: parseFloat(v('sh_te_' + i)) || 0,
-      openCommission: parseFloat(v('sh_cm_' + i)) || 0,
-      delta: null, ivr: null,
-      subOwner: owner,
-      note: '[Ekran görüntüsü]',
-      month: month
+    // Oransal bolusum. Yuvarlama artigi SON dilime verilir ki dilimlerin
+    // toplami orijinal tutari birebir tutsun (vergi hesabina giriyor).
+    // Tum kontratlar dagitilmadiysa artik dagitilmaz — eksik kontratlarin
+    // payi bilerek disarida birakilmistir.
+    var full = (alloc.sum === qty);
+    var accP = 0, accT = 0, accC = 0;
+    alloc.parts.forEach(function(part, pi){
+      var last  = full && (pi === alloc.parts.length - 1);
+      var pPrem = last ? Math.round((prem - accP) * 100) / 100 : Math.round(prem * part.n / qty * 100) / 100;
+      var pTem  = last ? Math.round(tem - accT)                : Math.round(tem  * part.n / qty);
+      var pCm   = last ? Math.round((cm  - accC) * 100) / 100  : Math.round(cm   * part.n / qty * 100) / 100;
+      accP += pPrem; accT += pTem; accC += pCm;
+
+      // Hesap sahibi (Mustafa/Eda) profil icindeki ayrimdir: aktif profile
+      // giden dilim ekrandaki secimi alir, diger profiller kendi
+      // varsayilanini kullanir.
+      var pOwner = (part.pid === ACTIVE_PROFILE) ? owner
+                 : (part.pid === 'mustafa' ? 'Mustafa' : 'Eda');
+
+      _shotAddTradeTo(part.pid, month, {
+        id: stamp + '_shot_' + i + '_' + part.pid,
+        ticker: sel.ticker,
+        type: v('sh_ty_' + i),
+        strike: v('sh_st_' + i),
+        expiry: v('sh_ex_' + i),
+        opened: opened, closed: null, pnl: null,
+        openPremium: pPrem, premium: part.n ? (pPrem / (part.n * 100)) : pPrem,
+        q: part.n,
+        teminat: pTem,
+        openCommission: pCm,
+        delta: null, ivr: null,
+        subOwner: pOwner,
+        note: '[Ekran görüntüsü]' + (alloc.parts.length > 1 ? ' ' + part.n + '/' + qty : ''),
+        month: month
+      });
+      perProfile[part.pid] = (perProfile[part.pid] || 0) + 1;
+      added++;
     });
-    added++;
   });
 
-  if(!added){ alert('Hiçbir işlem seçilmedi.'); return; }
   saveData();
   var m = document.getElementById('shot-modal'); if(m) m.remove();
   try { if(typeof renderTradeList === 'function') renderTradeList(currentFilter); } catch(e){}
   try { if(typeof renderDashboard === 'function') renderDashboard(); } catch(e){}
-  try { if(typeof _backupToast === 'function') _backupToast('📸 ' + added + ' işlem eklendi · ' + owner, true); } catch(e){}
+  try {
+    if(typeof _backupToast === 'function'){
+      var names = Object.keys(perProfile).map(function(pid){
+        var pr = (typeof PROFILES !== 'undefined' && PROFILES[pid]) ? PROFILES[pid].name : pid;
+        return pr + ' ' + perProfile[pid];
+      }).join(' · ');
+      _backupToast('📸 ' + added + ' işlem eklendi — ' + names, true);
+    }
+  } catch(e){}
 }
 
 // ── Canvas rounded-rect helper (path only — caller calls fill/stroke)
